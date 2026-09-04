@@ -25,7 +25,7 @@ $stmt = $pdo->prepare(
      JOIN classes c ON c.class_id = e.class_id
      JOIN enrollments en ON en.class_id = c.class_id AND en.user_id = :uid
      LEFT JOIN exam_submissions s ON s.exam_id = e.exam_id AND s.user_id = :uid2
-     ORDER BY FIELD(e.status, "LIVE", "SCHEDULED", "DRAFT", "CLOSED", "ARCHIVED"), e.exam_name ASC'
+     ORDER BY FIELD(e.status, 'LIVE', 'SCHEDULED', 'DRAFT', 'CLOSED', 'ARCHIVED'), e.exam_name ASC'
 );
 $stmt->execute(['uid' => $user['user_id'], 'uid2' => $user['user_id']]);
 $exams = $stmt->fetchAll();

@@ -30,7 +30,7 @@ if (!$enrollCheck->fetch()) {
 // Get class info
 $stmt = $pdo->prepare(
     'SELECT c.class_id, c.subject_code, c.subject_name, c.block, c.class_code,
-            CONCAT(u.first_name, " ", u.last_name) AS teacher_name
+            CONCAT(u.first_name, ' ', u.last_name) AS teacher_name
      FROM classes c
      JOIN users u ON u.user_id = c.teacher_id
      WHERE c.class_id = :cid'
@@ -47,7 +47,7 @@ $examStmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.duration_minutes, e.status, e.total_points
      FROM exams e
      WHERE e.class_id = :cid
-     ORDER BY FIELD(e.status, "LIVE", "SCHEDULED", "DRAFT", "CLOSED", "ARCHIVED"), e.exam_name ASC'
+     ORDER BY FIELD(e.status, 'LIVE', 'SCHEDULED', 'DRAFT', 'CLOSED', 'ARCHIVED'), e.exam_name ASC'
 );
 $examStmt->execute(['cid' => $classId]);
 $exams = $examStmt->fetchAll();
