@@ -69,8 +69,12 @@ if ($examId > 0) {
     $availability = resolveReviewAvailability($pdo, $examId);
     $reviewAvailable = $availability['review_available'];
 
+    $correctCount = (int) $result['correct_count'];
+    $totalQuestions = (int) $result['total_questions'];
+    $percentage = $totalQuestions > 0 ? round(($correctCount / $totalQuestions) * 100, 2) : 0.0;
+
     $passed = $result['passing_score'] !== null
-        ? ((int) $result['score'] >= (int) $result['passing_score'])
+        ? ($percentage >= (float) $result['passing_score'])
         : null;
 
     $payload = [
@@ -79,10 +83,11 @@ if ($examId > 0) {
         'exam_name'         => $result['exam_name'],
         'subject_code'      => $result['subject_code'],
         'subject_name'      => $result['subject_name'],
-        'score'             => (int) $result['score'],
-        'max_points'        => (int) $result['max_points'],
-        'correct_count'     => (int) $result['correct_count'],
-        'total_questions'   => (int) $result['total_questions'],
+        'score'             => $correctCount,
+        'max_points'        => $totalQuestions,
+        'correct_count'     => $correctCount,
+        'total_questions'   => $totalQuestions,
+        'percentage'        => $percentage,
         'passed'            => $passed,
         'time_used_secs'    => $result['time_used_secs'] !== null ? (int) $result['time_used_secs'] : null,
         'submitted_at'      => $result['submitted_at'],
@@ -115,16 +120,20 @@ $results = $stmt->fetchAll();
 $payload = [];
 foreach ($results as $r) {
     $availability = resolveReviewAvailability($pdo, (int) $r['exam_id']);
+    $correct = (int) $r['correct_count'];
+    $total   = (int) $r['total_questions'];
+    $pct     = $total > 0 ? round(($correct / $total) * 100, 2) : 0.0;
     $payload[] = [
         'submission_id'    => (int) $r['submission_id'],
         'exam_id'          => (int) $r['exam_id'],
-        'score'            => (int) $r['score'],
-        'correct_count'    => (int) $r['correct_count'],
-        'total_questions'  => (int) $r['total_questions'],
+        'score'            => $correct,
+        'correct_count'    => $correct,
+        'total_questions'  => $total,
+        'percentage'       => $pct,
         'time_used_secs'   => $r['time_used_secs'] !== null ? (int) $r['time_used_secs'] : null,
         'submitted_at'     => $r['submitted_at'],
         'exam_name'        => $r['exam_name'],
-        'max_points'       => (int) $r['max_points'],
+        'max_points'       => $total,
         'subject_code'     => $r['subject_code'],
         'subject_name'     => $r['subject_name'],
         'review_available' => $availability['review_available'],

@@ -28,7 +28,7 @@ try {
         sendError('Class not found.', 'NOT_FOUND', 404);
     }
 
-    $stmt2 = $pdo->prepare("SELECT e.exam_id, e.exam_name, (SELECT COUNT(*) FROM exam_submissions WHERE exam_id=e.exam_id) AS submission_count, (SELECT AVG(score) FROM exam_submissions WHERE exam_id=e.exam_id) AS avg_score, (SELECT MAX(score) FROM exam_submissions WHERE exam_id=e.exam_id) AS highest, (SELECT MIN(score) FROM exam_submissions WHERE exam_id=e.exam_id) AS lowest FROM exams e WHERE e.class_id=?");
+    $stmt2 = $pdo->prepare("SELECT e.exam_id, e.exam_name, (SELECT COUNT(*) FROM exam_submissions WHERE exam_id=e.exam_id) AS submission_count, (SELECT AVG(CASE WHEN total_questions > 0 THEN (correct_count / total_questions) * 100 END) FROM exam_submissions WHERE exam_id=e.exam_id) AS avg_score, (SELECT MAX(CASE WHEN total_questions > 0 THEN (correct_count / total_questions) * 100 END) FROM exam_submissions WHERE exam_id=e.exam_id) AS highest, (SELECT MIN(CASE WHEN total_questions > 0 THEN (correct_count / total_questions) * 100 END) FROM exam_submissions WHERE exam_id=e.exam_id) AS lowest FROM exams e WHERE e.class_id=?");
     $stmt2->execute([$class_id]);
     $exams = $stmt2->fetchAll(PDO::FETCH_ASSOC);
 
@@ -49,7 +49,7 @@ try {
         if (!isset($section_scores[$section])) {
             $section_scores[$section] = ['total' => 0, 'count' => 0];
         }
-        $stmt4 = $pdo->prepare("SELECT AVG(es.score) AS avg FROM exam_submissions es WHERE es.user_id=? AND es.exam_id IN (SELECT exam_id FROM exams WHERE class_id=?)");
+        $stmt4 = $pdo->prepare("SELECT AVG(CASE WHEN es.total_questions > 0 THEN (es.correct_count / es.total_questions) * 100 END) AS avg FROM exam_submissions es WHERE es.user_id=? AND es.exam_id IN (SELECT exam_id FROM exams WHERE class_id=?)");
         $stmt4->execute([$student['user_id'], $class_id]);
         $student_avg = $stmt4->fetch(PDO::FETCH_ASSOC);
 

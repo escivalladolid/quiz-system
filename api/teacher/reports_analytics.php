@@ -86,11 +86,12 @@ try {
         $passing_map[$ex['exam_id']] = (int)($ex['passing_score'] ?? 0);
     }
 
-    // All individual percentages for distribution & summary
+// All individual percentages for distribution & summary
     $all_pcts = [];
     foreach ($all_submissions as $sub) {
-        $max_pts = $exam_max_map[$sub['exam_id']] ?? 100;
-        $all_pcts[] = $max_pts > 0 ? round(((int)$sub['score'] / $max_pts) * 100) : 0;
+        $correct = (int) ($sub['correct_count'] ?? 0);
+        $total   = (int) ($sub['total_questions'] ?? 0);
+        $all_pcts[] = $total > 0 ? round(($correct / $total) * 100) : 0;
     }
     $total_subs = count($all_pcts);
 
@@ -125,13 +126,12 @@ try {
         $total_questions = 0;
         $all_passed = true;
 
-        foreach ($subs as $s) {
-            $score   = (int)$s['score'];
+foreach ($subs as $s) {
+            $score   = (int)$s['correct_count'];
             $tq      = (int)$s['total_questions'];
-            $max_pts = $exam_max_map[$s['exam_id']] ?? 100;
 
-            // Score is scaled to exam.total_points; percentage = (score / total_points) * 100
-            $pct = round(($score / $max_pts) * 100, 1);
+            // Percentage is derived from correct answers vs total questions.
+            $pct = round(($tq > 0 ? ($score / $tq) * 100 : 0), 1);
             $pct_sum += $pct;
             $pct_count++;
 
@@ -139,9 +139,9 @@ try {
             $total_score += $score;
             $total_questions += $tq;
 
-            // Check pass/fail per exam
+            // Check pass/fail per exam (percentage >= passing_score)
             $passing = $passing_map[$s['exam_id']] ?? 0;
-            if ($passing > 0 && $score < $passing) {
+            if ($passing > 0 && $pct < $passing) {
                 $all_passed = false;
             }
         }

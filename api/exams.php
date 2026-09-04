@@ -30,4 +30,16 @@ $stmt = $pdo->prepare(
 $stmt->execute(['uid' => $user['user_id'], 'uid2' => $user['user_id']]);
 $exams = $stmt->fetchAll();
 
+// Normalize each exam to the canonical score model:
+// score = correct count, max_points = total questions, percentage derived.
+foreach ($exams as &$ex) {
+    $correct = $ex['correct_count'] !== null ? (int) $ex['correct_count'] : null;
+    $total   = $ex['total_questions'] !== null ? (int) $ex['total_questions'] : null;
+    $ex['score']        = $correct;
+    $ex['percentage']   = ($correct !== null && $total > 0)
+        ? round(($correct / $total) * 100, 2)
+        : null;
+}
+unset($ex);
+
 sendSuccess(['exams' => $exams]);

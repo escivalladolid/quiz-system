@@ -65,22 +65,27 @@ try {
         $logStmt->execute(['eid' => $examId, 'uid' => $studentId]);
         $tabSwitchLog = array_map(fn($r) => $r['created_at'], $logStmt->fetchAll());
 
+$subCorrect = (int) $submission['correct_count'];
+        $subTotal   = (int) $submission['total_questions'];
+        $subPct     = $subTotal > 0 ? round(($subCorrect / $subTotal) * 100, 2) : 0.0;
+
         sendSuccess([
             'exam' => [
                 'exam_id'   => (int) $exam['exam_id'],
                 'exam_name' => $exam['exam_name'],
                 'subject_name' => $exam['subject_name'],
                 'block'     => $exam['block'],
-                'max_points'    => (int) $exam['max_points'],
+                'max_points'    => (int) $subTotal,
                 'passing_score' => $exam['passing_score'] !== null ? (int) $exam['passing_score'] : null,
             ],
             'student' => [
                 'submission_id'   => (int) $submission['submission_id'],
                 'student_id'      => (int) $submission['user_id'],
                 'student_name'    => trim($submission['first_name'] . ' ' . $submission['last_name']),
-                'score'           => (int) $submission['score'],
-                'correct_count'   => (int) $submission['correct_count'],
-                'total_questions' => (int) $submission['total_questions'],
+                'score'           => $subCorrect,
+                'correct_count'   => $subCorrect,
+                'total_questions' => $subTotal,
+                'percentage'      => $subPct,
                 'time_used_secs'  => $submission['time_used_secs'] !== null ? (int) $submission['time_used_secs'] : null,
                 'submitted_at'    => $submission['submitted_at'],
                 'tab_switch_count' => count($tabSwitchLog),
@@ -99,21 +104,26 @@ try {
                   WHERE p.exam_id = s.exam_id AND p.user_id = s.user_id) AS tab_switch_count
          FROM exam_submissions s
          JOIN users u ON u.user_id = s.user_id
-         WHERE s.exam_id = :eid
-         ORDER BY s.score DESC, s.submitted_at ASC'
+WHERE s.exam_id = :eid
+         ORDER BY (CASE WHEN s.total_questions > 0 THEN s.correct_count / s.total_questions END) DESC,
+                  s.submitted_at ASC'
     );
     $listStmt->execute(['eid' => $examId]);
     $submissions = $listStmt->fetchAll();
 
-    $payload = [];
+$payload = [];
     foreach ($submissions as $s) {
+        $correct = (int) $s['correct_count'];
+        $total   = (int) $s['total_questions'];
+        $pct     = $total > 0 ? round(($correct / $total) * 100, 2) : 0.0;
         $payload[] = [
             'submission_id'   => (int) $s['submission_id'],
             'student_id'      => (int) $s['user_id'],
             'student_name'    => trim($s['first_name'] . ' ' . $s['last_name']),
-            'score'           => (int) $s['score'],
-            'correct_count'   => (int) $s['correct_count'],
-            'total_questions' => (int) $s['total_questions'],
+            'score'           => $correct,
+            'correct_count'   => $correct,
+            'total_questions' => $total,
+            'percentage'      => $pct,
             'time_used_secs'  => $s['time_used_secs'] !== null ? (int) $s['time_used_secs'] : null,
             'submitted_at'    => $s['submitted_at'],
             'tab_switch_count' => (int) $s['tab_switch_count'],

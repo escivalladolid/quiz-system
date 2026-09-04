@@ -27,7 +27,7 @@ syncExamStatuses($pdo);
 
 // Get exam
 $examStmt = $pdo->prepare(
-    'SELECT e.exam_id, e.status, e.class_id, e.total_points, e.passing_score
+    'SELECT e.exam_id, e.status, e.class_id, e.passing_score
      FROM exams e WHERE e.exam_id = :eid'
 );
 $examStmt->execute(['eid' => $examId]);
@@ -48,17 +48,25 @@ $subCheck = $pdo->prepare(
 $subCheck->execute(['eid' => $examId, 'uid' => $user['user_id']]);
 $existingSub = $subCheck->fetch();
 if ($existingSub) {
+    $existingCorrect = (int) $existingSub['correct_count'];
+    $existingTotal   = (int) $existingSub['total_questions'];
+    $existingPct     = $existingTotal > 0 ? round(($existingCorrect / $existingTotal) * 100, 2) : 0.0;
+    $existingPassed  = ($exam['passing_score'] !== null)
+        ? ($existingPct >= (float) $exam['passing_score'])
+        : null;
+
     sendSuccess([
         'already_submitted' => true,
         'submission_id'     => (int) $existingSub['submission_id'],
-        'score'             => (int) $existingSub['score'],
-        'correct_count'     => (int) $existingSub['correct_count'],
-        'total_questions'   => (int) $existingSub['total_questions'],
+        'score'             => $existingCorrect,
+        'correct_count'     => $existingCorrect,
+        'total_questions'   => $existingTotal,
+        'percentage'        => $existingPct,
         'time_used_secs'    => $existingSub['time_used_secs'] !== null ? (int) $existingSub['time_used_secs'] : null,
         'exit_attempts'     => (int) $existingSub['exit_attempts'],
         'auto_submitted'    => (bool) $existingSub['auto_submitted'],
         'submitted_at'      => $existingSub['submitted_at'],
-        'passed'            => $exam['passing_score'] ? ((int) $existingSub['score'] >= (int) $exam['passing_score']) : null,
+        'passed'            => $existingPassed,
     ]);
 }
 
@@ -83,23 +91,20 @@ $qStmt = $pdo->prepare(
 $qStmt->execute(['eid' => $examId]);
 $questions = $qStmt->fetchAll();
 
-$totalQuestions      = count($questions);
-$correctCount        = 0;
-$totalPointsPossible = 0;
-$earnedPoints        = 0;
+$totalQuestions = count($questions);
+$correctCount   = 0;
 
+// Default objective scoring: every question is worth exactly 1 point.
+// Correct = +1, wrong/unanswered = +0. Total possible = number of questions.
 foreach ($questions as $q) {
     $qid        = (string) $q['question_id'];
     $type       = normalizeQuestionType($q['question_type'] ?? 'MC');
-    $points     = (int) ($q['points'] ?? 1);
     $matching   = $q['answer_matching'] ?? 'EXACT';
     $correct    = $q['correct_answer'];
     $studentAns = $answers[$qid] ?? null;
 
-    $totalPointsPossible += $points;
-
     if ($studentAns === null) {
-        // No answer provided — 0 points
+        // Unanswered — 0 points.
         continue;
     }
 
@@ -124,17 +129,16 @@ foreach ($questions as $q) {
             break;
 
         case 'ENUM':
-            // correct_answer stores expected lines separated by newlines or |
+            // All-or-nothing: every expected line must match, exactly like
+            // exam_grading.php::isAnswerCorrect. No partial credit.
             $expectedLines = preg_split('/\r?\n|\|/', trim((string) $correct));
             $expectedLines = array_map('trim', $expectedLines);
             $expectedLines = array_filter($expectedLines, fn($l) => $l !== '');
 
-            // Student answer: split by newlines, commas, or pipes
             $studentLines = preg_split('/\r?\n|,|\|/', (string) $studentAns);
             $studentLines = array_map('trim', $studentLines);
             $studentLines = array_filter($studentLines, fn($l) => $l !== '');
 
-            // Count how many expected lines the student matched
             $matchedLines = 0;
             foreach ($expectedLines as $expected) {
                 foreach ($studentLines as $sLine) {
@@ -143,37 +147,32 @@ foreach ($questions as $q) {
                         : ($sLine === $expected);
                     if ($match) {
                         $matchedLines++;
-                        break; // count each expected line at most once
+                        break;
                     }
                 }
             }
 
-            if (count($expectedLines) > 0 && $matchedLines === count($expectedLines)) {
-                // All lines correct = full points
-                $isCorrect = true;
-            } elseif ($matchedLines > 0) {
-                // Partial credit: proportion of correct lines
-                $earnedPoints += (int) round(($matchedLines / count($expectedLines)) * $points);
-                continue 2; // skip the default $earnedPoints += $points below
-            }
+            $isCorrect = count($expectedLines) > 0 && $matchedLines === count($expectedLines);
             break;
     }
 
     if ($isCorrect) {
         $correctCount++;
-        $earnedPoints += $points;
     }
 }
 
-// Calculate percentage score based on exam total_points
-$score = $totalPointsPossible > 0
-    ? (int) round(($earnedPoints / $totalPointsPossible) * $exam['total_points'])
-    : 0;
+// SCORE = number of correct answers (= raw points, 1 per correct question).
+$score = $correctCount;
 
-// Clamp score to exam max
-if ($score > $exam['total_points']) {
-    $score = $exam['total_points'];
-}
+// PERCENTAGE = (correct / total questions) x 100. Never treated as added points.
+$percentage = $totalQuestions > 0
+    ? round(($correctCount / $totalQuestions) * 100, 2)
+    : 0.0;
+
+// Pass/fail is decided from the percentage against the teacher's passing score.
+$passed = ($exam['passing_score'] !== null)
+    ? ($percentage >= (float) $exam['passing_score'])
+    : null;
 
 // Save submission
 $pdo->prepare(
@@ -195,13 +194,12 @@ $pdo->prepare(
 ]);
 
 sendSuccess([
-    'score'               => $score,
-    'correct_count'       => $correctCount,
-    'total_questions'     => $totalQuestions,
-    'total_points_possible' => $totalPointsPossible,
-    'exam_total_points'   => $exam['total_points'],
-    'passing_score'       => $exam['passing_score'] ?? null,
-    'passed'              => $exam['passing_score'] ? ($score >= $exam['passing_score']) : null,
-    'time_used_secs'      => $timeUsedSecs,
-    'exit_attempts'       => $exitAttempts,
-    'auto_submitted'      => (bool) $autoSubmitted,]);
+    'score'             => $score,
+    'correct_count'     => $correctCount,
+    'total_questions'   => $totalQuestions,
+    'percentage'        => $percentage,
+    'passing_score'     => $exam['passing_score'] ?? null,
+    'passed'            => $passed,
+    'time_used_secs'    => $timeUsedSecs,
+    'exit_attempts'     => $exitAttempts,
+    'auto_submitted'    => (bool) $autoSubmitted,]);

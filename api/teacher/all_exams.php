@@ -42,7 +42,7 @@ try {
             (SELECT COUNT(*) FROM enrollments WHERE class_id=c.class_id) AS total_students,
             (SELECT COUNT(*) FROM exam_submissions WHERE exam_id=e.exam_id) AS submission_count,
             (SELECT COUNT(*) FROM questions WHERE exam_id=e.exam_id) AS question_count,
-            (SELECT ROUND(AVG(score), 1) FROM exam_submissions WHERE exam_id=e.exam_id) AS class_average
+            (SELECT ROUND(AVG(CASE WHEN total_questions > 0 THEN (correct_count / total_questions) * 100 END), 1) FROM exam_submissions WHERE exam_id=e.exam_id) AS class_average
         FROM exams e
         JOIN classes c ON e.class_id=c.class_id
         WHERE c.teacher_id=?

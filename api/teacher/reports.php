@@ -39,8 +39,8 @@ try {
         $total_pct_sum = 0;
         $total_pct_count = 0;
 
-        foreach ($students as &$student) {
-            $stmt4 = $pdo->prepare("SELECT es.score, es.total_questions, e.total_points FROM exam_submissions es JOIN exams e ON e.exam_id = es.exam_id WHERE es.user_id=? AND es.exam_id IN (SELECT exam_id FROM exams WHERE class_id=?)");
+foreach ($students as &$student) {
+            $stmt4 = $pdo->prepare("SELECT es.score, es.correct_count, es.total_questions FROM exam_submissions es WHERE es.user_id=? AND es.exam_id IN (SELECT exam_id FROM exams WHERE class_id=?)");
             $stmt4->execute([$student['user_id'], $class_id]);
             $scores = $stmt4->fetchAll(PDO::FETCH_ASSOC);
 
@@ -49,9 +49,9 @@ try {
             if (!empty($scores)) {
                 $pct_sum = 0;
                 foreach ($scores as $s) {
-                    $totalPoints = (int) ($s['total_points'] ?? 0);
-                    $max = $totalPoints > 0 ? $totalPoints : 1;
-                    $pct = ($s['score'] / $max) * 100;
+                    $correct = (int) ($s['correct_count'] ?? 0);
+                    $total   = (int) ($s['total_questions'] ?? 0);
+                    $pct = $total > 0 ? ($correct / $total) * 100 : 0;
                     $pct_sum += $pct;
                 }
                 $student_avg = $pct_sum / count($scores);
@@ -62,11 +62,12 @@ try {
         }
         unset($student);
 
-        // Calculate pass/fail from exam_submissions directly
+// Calculate pass/fail from exam_submissions directly (percentage >= passing_score)
         $stmt5 = $pdo->prepare(
             "SELECT COUNT(*) AS pass_count FROM exam_submissions es
              JOIN exams e ON es.exam_id = e.exam_id
-             WHERE e.class_id=? AND es.score >= e.passing_score"
+             WHERE e.class_id=? AND es.total_questions > 0
+               AND (es.correct_count / es.total_questions) * 100 >= e.passing_score"
         );
         $stmt5->execute([$class_id]);
         $pass_count = (int)$stmt5->fetchColumn();
@@ -74,7 +75,8 @@ try {
         $stmt6 = $pdo->prepare(
             "SELECT COUNT(*) AS fail_count FROM exam_submissions es
              JOIN exams e ON es.exam_id = e.exam_id
-             WHERE e.class_id=? AND es.score < e.passing_score"
+             WHERE e.class_id=? AND (es.total_questions = 0
+               OR (es.correct_count / es.total_questions) * 100 < e.passing_score)"
         );
         $stmt6->execute([$class_id]);
         $fail_count = (int)$stmt6->fetchColumn();
@@ -105,24 +107,33 @@ try {
             $stmt3->execute([$class['class_id']]);
             $exams = $stmt3->fetchAll(PDO::FETCH_ASSOC);
 
-            $class_avg = 0;
+$class_avg = 0;
             $pass_count = 0;
             $fail_count = 0;
-            $total_score_sum = 0;
-            $total_score_count = 0;
+            $total_pct_sum = 0;
+            $total_pct_count = 0;
 
             foreach ($students as &$student) {
-                $stmt4 = $pdo->prepare("SELECT es.exam_id, es.score, es.total_questions FROM exam_submissions es WHERE es.user_id=? AND es.exam_id IN (SELECT exam_id FROM exams WHERE class_id=?)");
+                $stmt4 = $pdo->prepare("SELECT es.exam_id, es.correct_count, es.total_questions FROM exam_submissions es WHERE es.user_id=? AND es.exam_id IN (SELECT exam_id FROM exams WHERE class_id=?)");
                 $stmt4->execute([$student['user_id'], $class['class_id']]);
                 $scores = $stmt4->fetchAll(PDO::FETCH_ASSOC);
 
                 $student['exams_taken'] = count($scores);
                 $student_avg = 0;
                 if (!empty($scores)) {
-                    $sum = array_sum(array_column($scores, 'score'));
-                    $student_avg = $sum / count($scores);
-                    $total_score_sum += $sum;
-                    $total_score_count += count($scores);
+                    $pct_sum = 0;
+                    foreach ($scores as &$s) {
+                        $correct = (int) ($s['correct_count'] ?? 0);
+                        $total   = (int) ($s['total_questions'] ?? 0);
+                        $pct = $total > 0 ? ($correct / $total) * 100 : 0;
+                        $pct_sum += $pct;
+                        $total_pct_sum += $pct;
+                        $total_pct_count++;
+                        $s['percentage'] = round($pct, 2);
+                        $s['score'] = $correct;
+                    }
+                    unset($s);
+                    $student_avg = $pct_sum / count($scores);
                 }
                 $student['avg_score'] = round($student_avg, 2);
                 $student['scores'] = $scores;
@@ -130,7 +141,7 @@ try {
                 foreach ($exams as $exam) {
                     foreach ($scores as $s) {
                         if ($s['exam_id'] == $exam['exam_id']) {
-                            if ($s['score'] >= $exam['passing_score']) {
+                            if ($s['percentage'] >= $exam['passing_score']) {
                                 $pass_count++;
                             } else {
                                 $fail_count++;
@@ -141,7 +152,7 @@ try {
             }
             unset($student);
 
-            $class_avg = $total_score_count > 0 ? round($total_score_sum / $total_score_count, 2) : 0;
+            $class_avg = $total_pct_count > 0 ? round($total_pct_sum / $total_pct_count, 2) : 0;
 
             $result[] = [
                 'class_id' => $class['class_id'],

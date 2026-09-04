@@ -32,7 +32,7 @@ try {
 
     $placeholders = str_repeat('?,', count($class_ids) - 1) . '?';
 
-    $stmt = $pdo->prepare("SELECT e.*, c.subject_name, c.class_code, (SELECT COUNT(*) FROM exam_submissions WHERE exam_id=e.exam_id) AS submission_count, (SELECT AVG(score) FROM exam_submissions WHERE exam_id=e.exam_id) AS avg_score FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.class_id IN ($placeholders) ORDER BY e.created_at DESC");
+    $stmt = $pdo->prepare("SELECT e.*, c.subject_name, c.class_code, (SELECT COUNT(*) FROM exam_submissions WHERE exam_id=e.exam_id) AS submission_count, (SELECT AVG(CASE WHEN total_questions > 0 THEN (correct_count / total_questions) * 100 END) FROM exam_submissions WHERE exam_id=e.exam_id) AS avg_score FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.class_id IN ($placeholders) ORDER BY e.created_at DESC");
     $stmt->execute($class_ids);
     $exams = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
