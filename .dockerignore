@@ -42,13 +42,7 @@ node_modules/
 __pycache__/
 *.pyc
 
-# --- Render infra files: needed for the BUILD context but NOT run-time ---
-# The Dockerfile is executed to build the image but is not needed inside it.
-# Excluding them keeps them out of the served document root (so
-# /apache/, /Dockerfile, /render.yaml are not reachable via HTTPS).
-# index.php (health endpoint) and .htaccess (+ api/, config/, helpers/)
-# are NOT excluded — they are served at runtime.
-Dockerfile
-.dockerignore
-render.yaml
-apache/
+# NOTE: Dockerfile, .dockerignore, render.yaml and apache/ are intentionally
+# NOT excluded here. The Dockerfile COPYs apache/<files> into place, so those
+# files MUST be part of the build context. Excluding them (as this file once
+# did) made the build fail with 'COPY apache/...: not found'.
