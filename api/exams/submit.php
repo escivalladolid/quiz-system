@@ -25,6 +25,30 @@ $autoSubmitted = !empty($input['auto_submitted']) ? 1 : 0;
 // Sync time-based transitions so the status below is always current.
 syncExamStatuses($pdo);
 
+// The client keeps its live answers in memory and also auto-saves each one to
+// exam_temp_answers (exam_save_answer.php). A fast submit can carry an
+// incomplete in-memory map (e.g. radio selections made moments before
+// submitting), dropping answers. Merge the server-side auto-saved answers as
+// the authoritative complement so no answered question is ever lost from
+// grading: for any question the client did NOT send, use the auto-saved value.
+$mergeStmt = $pdo->prepare(
+    'SELECT answers_json FROM exam_temp_answers
+     WHERE exam_id = :eid AND user_id = :uid'
+);
+$mergeStmt->execute(['eid' => $examId, 'uid' => $user['user_id']]);
+$tempRow = $mergeStmt->fetch();
+if ($tempRow && !empty($tempRow['answers_json'])) {
+    $tempSaved = json_decode($tempRow['answers_json'], true);
+    if (is_array($tempSaved)) {
+        foreach ($tempSaved as $qid => $value) {
+            $qid = (string) $qid;
+            if (!array_key_exists($qid, $answers) && $value !== null && $value !== '') {
+                $answers[$qid] = $value;
+            }
+        }
+    }
+}
+
 // Get exam
 $examStmt = $pdo->prepare(
     'SELECT e.exam_id, e.status, e.class_id, e.passing_score
