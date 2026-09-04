@@ -1,0 +1,207 @@
+<?php
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../helpers/response.php';
+require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/exam_status.php';
+require_once __DIR__ . '/../../helpers/exam_grading.php';
+
+header('Content-Type: application/json');
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    sendError('This endpoint only accepts POST requests.', 'METHOD_NOT_ALLOWED', 405);
+}
+
+$pdo  = getDbConnection();
+$user = requireRole($pdo, ['STUDENT']);
+$input = getJsonInput();
+requireFields($input, ['exam_id']);
+
+$examId       = (int) $input['exam_id'];
+$answers      = (isset($input['answers']) && is_array($input['answers'])) ? $input['answers'] : [];
+$timeUsedSecs = isset($input['time_used_secs']) ? (int) $input['time_used_secs'] : null;
+$exitAttempts = isset($input['exit_attempts']) ? (int) $input['exit_attempts'] : 0;
+$autoSubmitted = !empty($input['auto_submitted']) ? 1 : 0;
+
+// Sync time-based transitions so the status below is always current.
+syncExamStatuses($pdo);
+
+// Get exam
+$examStmt = $pdo->prepare(
+    'SELECT e.exam_id, e.status, e.class_id, e.total_points, e.passing_score
+     FROM exams e WHERE e.exam_id = :eid'
+);
+$examStmt->execute(['eid' => $examId]);
+$exam = $examStmt->fetch();
+
+if (!$exam) {
+    sendError('Exam not found.', 'NOT_FOUND', 404);
+}
+
+// If the student has already submitted, this is a resume/resubmit attempt.
+// Return the existing result idempotently instead of erroring, so the app
+// never shows "submit failed" for an already-submitted exam.
+$subCheck = $pdo->prepare(
+    'SELECT submission_id, score, correct_count, total_questions, time_used_secs,
+            submitted_at, exit_attempts, auto_submitted
+     FROM exam_submissions WHERE exam_id = :eid AND user_id = :uid'
+);
+$subCheck->execute(['eid' => $examId, 'uid' => $user['user_id']]);
+$existingSub = $subCheck->fetch();
+if ($existingSub) {
+    sendSuccess([
+        'already_submitted' => true,
+        'submission_id'     => (int) $existingSub['submission_id'],
+        'score'             => (int) $existingSub['score'],
+        'correct_count'     => (int) $existingSub['correct_count'],
+        'total_questions'   => (int) $existingSub['total_questions'],
+        'time_used_secs'    => $existingSub['time_used_secs'] !== null ? (int) $existingSub['time_used_secs'] : null,
+        'exit_attempts'     => (int) $existingSub['exit_attempts'],
+        'auto_submitted'    => (bool) $existingSub['auto_submitted'],
+        'submitted_at'      => $existingSub['submitted_at'],
+        'passed'            => $exam['passing_score'] ? ((int) $existingSub['score'] >= (int) $exam['passing_score']) : null,
+    ]);
+}
+
+// If the exam closed (manually or automatically), reject further submissions.
+if (strtoupper((string)$exam['status']) !== 'LIVE') {
+    sendError('Exam closed. Further submissions are rejected.', 'EXAM_CLOSED', 403);
+}
+
+// Verify enrollment
+$enrollCheck = $pdo->prepare('SELECT 1 FROM enrollments WHERE user_id = :uid AND class_id = :cid');
+$enrollCheck->execute(['uid' => $user['user_id'], 'cid' => $exam['class_id']]);
+if (!$enrollCheck->fetch()) {
+    sendError('You are not enrolled in this class.', 'NOT_ENROLLED', 403);
+}
+
+// Fetch all questions for this exam
+$qStmt = $pdo->prepare(
+    'SELECT question_id, question_text, question_type, options, correct_answer,
+            points, answer_matching
+     FROM questions WHERE exam_id = :eid'
+);
+$qStmt->execute(['eid' => $examId]);
+$questions = $qStmt->fetchAll();
+
+$totalQuestions      = count($questions);
+$correctCount        = 0;
+$totalPointsPossible = 0;
+$earnedPoints        = 0;
+
+foreach ($questions as $q) {
+    $qid        = (string) $q['question_id'];
+    $type       = normalizeQuestionType($q['question_type'] ?? 'MC');
+    $points     = (int) ($q['points'] ?? 1);
+    $matching   = $q['answer_matching'] ?? 'EXACT';
+    $correct    = $q['correct_answer'];
+    $studentAns = $answers[$qid] ?? null;
+
+    $totalPointsPossible += $points;
+
+    if ($studentAns === null) {
+        // No answer provided — 0 points
+        continue;
+    }
+
+    $isCorrect = false;
+
+    switch ($type) {
+        case 'MC':
+        case 'TF':
+            // Older submissions may store the option letter ("B") instead of text
+            $resolved = resolveOptionLetter($studentAns, json_decode($q['options'] ?? '', true) ?: null, $type);
+            $isCorrect = (trim((string) $resolved) === trim((string) $correct));
+            break;
+
+        case 'ID':
+            $studentTrimmed = trim((string) $studentAns);
+            $correctTrimmed = trim((string) $correct);
+            if ($matching === 'IGNORE_CASE') {
+                $isCorrect = (mb_strtolower($studentTrimmed) === mb_strtolower($correctTrimmed));
+            } else {
+                $isCorrect = ($studentTrimmed === $correctTrimmed);
+            }
+            break;
+
+        case 'ENUM':
+            // correct_answer stores expected lines separated by newlines or |
+            $expectedLines = preg_split('/\r?\n|\|/', trim((string) $correct));
+            $expectedLines = array_map('trim', $expectedLines);
+            $expectedLines = array_filter($expectedLines, fn($l) => $l !== '');
+
+            // Student answer: split by newlines, commas, or pipes
+            $studentLines = preg_split('/\r?\n|,|\|/', (string) $studentAns);
+            $studentLines = array_map('trim', $studentLines);
+            $studentLines = array_filter($studentLines, fn($l) => $l !== '');
+
+            // Count how many expected lines the student matched
+            $matchedLines = 0;
+            foreach ($expectedLines as $expected) {
+                foreach ($studentLines as $sLine) {
+                    $match = ($matching === 'IGNORE_CASE')
+                        ? (mb_strtolower($sLine) === mb_strtolower($expected))
+                        : ($sLine === $expected);
+                    if ($match) {
+                        $matchedLines++;
+                        break; // count each expected line at most once
+                    }
+                }
+            }
+
+            if (count($expectedLines) > 0 && $matchedLines === count($expectedLines)) {
+                // All lines correct = full points
+                $isCorrect = true;
+            } elseif ($matchedLines > 0) {
+                // Partial credit: proportion of correct lines
+                $earnedPoints += (int) round(($matchedLines / count($expectedLines)) * $points);
+                continue 2; // skip the default $earnedPoints += $points below
+            }
+            break;
+    }
+
+    if ($isCorrect) {
+        $correctCount++;
+        $earnedPoints += $points;
+    }
+}
+
+// Calculate percentage score based on exam total_points
+$score = $totalPointsPossible > 0
+    ? (int) round(($earnedPoints / $totalPointsPossible) * $exam['total_points'])
+    : 0;
+
+// Clamp score to exam max
+if ($score > $exam['total_points']) {
+    $score = $exam['total_points'];
+}
+
+// Save submission
+$pdo->prepare(
+    'INSERT INTO exam_submissions
+        (exam_id, user_id, answers_json, score, correct_count, total_questions,
+         time_used_secs, exit_attempts, auto_submitted)
+     VALUES
+        (:eid, :uid, :answers, :score, :correct, :total, :time, :exit, :auto)'
+)->execute([
+    'eid'    => $examId,
+    'uid'    => $user['user_id'],
+    'answers'=> json_encode($answers),
+    'score'  => $score,
+    'correct'=> $correctCount,
+    'total'  => $totalQuestions,
+    'time'   => $timeUsedSecs,
+    'exit'   => $exitAttempts,
+    'auto'   => $autoSubmitted,
+]);
+
+sendSuccess([
+    'score'               => $score,
+    'correct_count'       => $correctCount,
+    'total_questions'     => $totalQuestions,
+    'total_points_possible' => $totalPointsPossible,
+    'exam_total_points'   => $exam['total_points'],
+    'passing_score'       => $exam['passing_score'] ?? null,
+    'passed'              => $exam['passing_score'] ? ($score >= $exam['passing_score']) : null,
+    'time_used_secs'      => $timeUsedSecs,
+    'exit_attempts'       => $exitAttempts,
+    'auto_submitted'      => (bool) $autoSubmitted,]);

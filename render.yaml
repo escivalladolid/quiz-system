@@ -1,0 +1,49 @@
+# ============================================================
+# Render Blueprint — Capstone Mobile Quiz System (Web Service)
+#
+# IMPORTANT (verified Render behavior):
+# - Render has NO native PHP runtime; PHP MUST be deployed via Docker.
+#   This service uses runtime "docker" and the Dockerfile in this folder.
+# - Render does NOT offer a managed MySQL service in Blueprints and its
+#   FREE plan has no private networking. The app requires MySQL.
+#   DECISION: MySQL is hosted EXTERNALLY on Aiven's free/Dev tier
+#   (aiven.io). Render talks to it over the internet using its public
+#   SSL connection string. This keeps the whole stack at $0 on Render.
+#
+# This file is OPTIONAL infrastructure-as-code. You can also create the
+# Web Service manually by pointing Render at this deploy/ folder with
+# runtime = Docker. See the Phase 6 guide for manual steps.
+# ============================================================
+
+services:
+  - type: web
+    name: quiz-system-api
+    runtime: docker
+    rootDir: .
+    plan: free
+    envVars:
+      # Set these as SECRETS in the Render dashboard (never commit values).
+      # They must point at your Aiven MySQL instance:
+      #   DB_HOST     -> Aiven host (e.g. mysql-xxxx.aivencloud.com)
+      #   DB_PORT     -> Aiven port (e.g. 11025)
+      #   DB_NAME     -> the quiz_system database
+      #   DB_USER     -> the Aiven service user
+      #   DB_PASSWORD -> the Aiven service password
+      #   DB_SSL_CA_B64 -> base64 of Aiven's ca.pem (VERY long single-line
+      #                    value). Aiven requires TLS; without this the PDO
+      #                    connection is refused.
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_NAME
+        value: quiz_system
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_SSL_CA_B64
+        sync: false
+      # Health check target (returned by the root endpoint).
+      - key: APP_ENV
+        value: production

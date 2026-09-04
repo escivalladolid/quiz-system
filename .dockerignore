@@ -1,0 +1,54 @@
+# ============================================================
+# .dockerignore — files/sources kept OUT of the Render image
+# Build context root is the deploy/ folder.
+# ============================================================
+
+# --- Local dev / test scripts (must NEVER reach the image) ---
+# These live in Backend-PHP/database and Backend-PHP root, but guard
+# anyway in case the build context ever widens.
+**/setup.php
+**_gen_hash.php
+**_migrate_add_times.php
+**/database/test_*.php
+**/database/test_api*.php
+database/test_leaderboard.php
+Backend-PHP/
+
+# --- Source schema / SQL (not needed at runtime; imported in Phase 3) ---
+database/quiz_system.sql
+database/*.sql
+
+# --- Local environment & secrets (never commit/build) ---
+.env
+.env.*
+!.env.example
+**/config/database.local.php
+
+# --- VCS / IDE / OS junk ---
+.git/
+.gitignore
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# --- Build artifacts / archive / temp ---
+node_modules/
+*.zip
+*.tar.gz
+*.log
+*.tmp
+__pycache__/
+*.pyc
+
+# --- Render infra files: needed for the BUILD context but NOT run-time ---
+# The Dockerfile is executed to build the image but is not needed inside it.
+# Excluding them keeps them out of the served document root (so
+# /apache/, /Dockerfile, /render.yaml are not reachable via HTTPS).
+# index.php (health endpoint) and .htaccess (+ api/, config/, helpers/)
+# are NOT excluded — they are served at runtime.
+Dockerfile
+.dockerignore
+render.yaml
+apache/

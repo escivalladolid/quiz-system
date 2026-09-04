@@ -1,0 +1,17 @@
+# Never commit secrets or local config
+.env
+.env.*
+*.local.php
+config/database.local.php
+ca.pem
+ca_b64.txt
+
+# OS / IDE junk
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# Keep the import SQL out of the Docker image (it's a Phase 3 artifact)
+database/quiz_system.sql
+database/*.sql

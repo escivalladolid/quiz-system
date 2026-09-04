@@ -1,0 +1,10 @@
+# Disable InfinityFree anti-bot protection for API endpoints
+<IfModule mod_security.c>
+    SecRuleEngine Off
+    SecRule REQUEST_URI "^/api/" "nolog,allow"
+</IfModule>
+
+# Ensure JSON content type
+<FilesMatch "\.php$">
+    Header set Content-Type "application/json" "expr=%{REQUEST_URI} =~ m#/api/#"
+</FilesMatch>

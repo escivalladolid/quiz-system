@@ -1,0 +1,18 @@
+# ============================================================
+# .htaccess — Capstone Mobile Quiz System (Render/Apache)
+#
+# NOTE: The sensitive backend folders (config/, helpers/,
+# database/) are protected at the Apache vhost level in
+#   apache/000-default.conf  (via <Directory ... Require all denied>).
+# Apache does NOT allow <Directory> blocks inside .htaccess, so they
+# belong in the server/vhost config, NOT here.
+# ============================================================
+
+# Disable directory listing
+Options -Indexes
+
+# Prevent direct access to the database connection file as a fallback
+# (<Files> is legal in .htaccess).
+<Files "config/database.php">
+    Require all denied
+</Files>
