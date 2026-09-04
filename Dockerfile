@@ -11,9 +11,14 @@ FROM php:8.2-apache
 # json      : bundled and enabled by default in this image
 # openssl   : bundled by default (password_hash uses bcrypt)
 # mbstring is NOT bundled in the official php:8.2-apache image, so it must be
-# compiled here (docker-php-ext-enable alone would fail the build because the
-# .so does not exist yet).
-RUN docker-php-ext-install pdo_mysql mbstring
+# compiled. Compiling mbstring requires the oniguruma dev headers (libonig-dev)
+# in the build image; without them docker-php-ext-install mbstring fails with a
+# configure error. Install build deps, compile, then clean up in one layer.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libonig-dev \
+    && docker-php-ext-install pdo_mysql mbstring \
+    && apt-get purge -y --auto-remove libonig-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # --- Apache modules used by the API ---
 # rewrite : .htaccess (Options -Indexes, Require all denied on config/)
