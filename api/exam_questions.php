@@ -98,8 +98,8 @@ if ($examStatus !== 'LIVE' && !$existing) {
 $orderClause = $exam['randomize_questions'] ? 'ORDER BY RAND()' : 'ORDER BY order_num ASC';
 
 $qStmt = $pdo->prepare(
-    "SELECT question_id, question_text, question_type, options, option_a, option_b,
-            option_c, option_d, points, answer_matching, order_num
+    "SELECT question_id, question_text, question_type, options,
+            points, answer_matching, order_num
      FROM questions WHERE exam_id = :eid $orderClause"
 );
 $qStmt->execute(['eid' => $examId]);
@@ -117,17 +117,8 @@ foreach ($questions as &$q) {
     $jsonOptions = $q['options'] ? json_decode($q['options'], true) : null;
 
     if ($type === 'MC') {
-        // If options JSON exists and is an array, use it; otherwise build from option_a/b/c/d
-        if (is_array($jsonOptions) && count($jsonOptions) > 0) {
-            $q['options'] = $jsonOptions;
-        } else {
-            $q['options'] = array_values(array_filter([
-                $q['option_a'] ?? null,
-                $q['option_b'] ?? null,
-                $q['option_c'] ?? null,
-                $q['option_d'] ?? null,
-            ]));
-        }
+        // Options live in the JSON column.
+        $q['options'] = is_array($jsonOptions) ? array_values($jsonOptions) : [];
     } elseif ($type === 'TF') {
         // Force standard True/False options regardless of what's in the DB
         $q['options'] = ['True', 'False'];
@@ -140,9 +131,6 @@ foreach ($questions as &$q) {
             $q['expected_count'] = count($jsonOptions);
         }
     }
-
-    // Clean up old-format columns
-    unset($q['option_a'], $q['option_b'], $q['option_c'], $q['option_d']);
 
     // Attach the student's own previous answer for display when resuming.
     // Available for already-submitted exams and for in-progress attempts that
