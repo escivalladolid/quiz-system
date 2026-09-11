@@ -107,11 +107,11 @@ function admin_logged_in(): bool {
  */
 function admin_restore_remember(): void {
     if (admin_logged_in()) {
-        return cheklarni;
+        return;
     }
     $token = $_COOKIE['rmc_admin_remember'] ?? '';
     if ($token === '') {
-        return false;
+        return;
     }
 
     $res = admin_api_request('GET', 'admin/me.php', [], $token);
@@ -119,7 +119,7 @@ function admin_restore_remember(): void {
         // Token was revoked/expired — drop the stale cookie instead of
         // hammering the API on every request.
         admin_clear_remember_cookie();
-        return false;
+        return;
     }
 
     $data = $res['body']['data'] ?? [];
