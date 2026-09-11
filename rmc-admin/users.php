@@ -430,13 +430,19 @@ window.USERS = <?php echo json_encode($users); ?>;
     ev.preventDefault();
     userFormAlert.classList.add('hidden');
     var fd = new FormData(form);
+    // When editing yourself, role/status selects are disabled; disabled
+    // fields are excluded from FormData, so read their current value directly.
+    var fRoleEl = document.getElementById('f_role');
+    var fStatusEl = document.getElementById('f_status');
+    var roleId = Number(fRoleEl.disabled ? fRoleEl.value : fd.get('role_id'));
+    var statusVal = fStatusEl.disabled ? fStatusEl.value : fd.get('status');
     var payload = {
       first_name: fd.get('first_name'), last_name: fd.get('last_name'),
       username: fd.get('username'), email: fd.get('email'),
-      role_id: Number(fd.get('role_id')), status: fd.get('status'),
+      role_id: roleId, status: statusVal,
       student_id: fd.get('student_id') || '', year_level: fd.get('year_level') || '', section: fd.get('section') || ''
     };
-    if (Number(fd.get('role_id')) === 1 && (!payload.student_id || !payload.year_level || !payload.section)) {
+    if (roleId === 1 && (!payload.student_id || !payload.year_level || !payload.section)) {
       userFormAlert.textContent = 'Student ID, year level and section are required for student accounts.';
       userFormAlert.classList.remove('hidden');
       return;
