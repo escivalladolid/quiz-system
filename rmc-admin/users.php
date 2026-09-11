@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/inc/bootstrap.php';
+admin_require_login();
 
 $admin = $_SESSION['admin_user'];
 $self_id = (int) $admin['user_id'];
