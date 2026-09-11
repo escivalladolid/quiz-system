@@ -1,6 +1,13 @@
 <?php
 require_once __DIR__ . '/inc/bootstrap.php';
 
+// Already signed in? Bounce straight to the dashboard instead of rendering
+// the login form again (mirror of dashboard.php's admin_require_login(), inverted).
+if (admin_logged_in()) {
+    header('Location: dashboard.php');
+    exit;
+}
+
 $error = null;
 $username = '';
 
