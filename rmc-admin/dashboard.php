@@ -131,6 +131,77 @@ foreach (array_slice($classes, 0, 5) as $c) {
 foreach (array_slice($classes, 0, 5) as $c) {
     $sectionBars[] = ['label' => (string) ($c['block'] ?? '—'), 'value' => round((float) ($c['pass_rate'] ?? 0)), 'amber' => (float) ($c['pass_rate'] ?? 0) < 75];
 }
+
+$self_id = (int) ($admin['user_id'] ?? 0);
+
+/* ---------- Classes view (teachers + class list) ---------- */
+$teachers = [];
+$classesAll = [];
+$classStatus = ['total' => 0, 'active' => 0, 'archived' => 0];
+$res = admin_api_request('GET', 'admin/users.php?role=TEACHER&per_page=100', [], $token);
+if (($res['body']['success'] ?? false) === true) {
+    $teachers = is_array($res['body']['data']['users'] ?? null) ? $res['body']['data']['users'] : [];
+}
+$res = admin_api_request('GET', 'admin/classes.php?per_page=100', [], $token);
+if (($res['body']['success'] ?? false) === true) {
+    $d = $res['body']['data'] ?? [];
+    $classesAll = is_array($d['classes'] ?? null) ? $d['classes'] : [];
+    foreach (($d['summary'] ?? []) as $k => $v) { if (isset($classStatus[$k])) { $classStatus[$k] = (int) $v; } }
+}
+
+/* ---------- Assessments view (exams) ---------- */
+$examsAll = [];
+$examStatusCounts = ['DRAFT' => 0, 'SCHEDULED' => 0, 'LIVE' => 0, 'CLOSED' => 0, 'ARCHIVED' => 0];
+$classesOption = [];
+$res = admin_api_request('GET', 'admin/exams.php?per_page=100', [], $token);
+if (($res['body']['success'] ?? false) === true) {
+    $d = $res['body']['data'] ?? [];
+    $examsAll = is_array($d['exams'] ?? null) ? $d['exams'] : [];
+    foreach (($d['summary'] ?? []) as $k => $v) { if (isset($examStatusCounts[$k])) { $examStatusCounts[$k] = (int) $v; } }
+}
+foreach ($classesAll as $cc) {
+    $label = trim(($cc['subject_code'] ?? '') . ' · ' . ($cc['class_code'] ?? '') . ($cc['block'] ? ' · ' . $cc['block'] : ''));
+    $classesOption[] = ['class_id' => (int) $cc['class_id'], 'label' => $label];
+}
+
+/* ---------- Logs view (audit trail) ---------- */
+$auditLogs = [];
+$auditSummary = [];
+$res = admin_api_request('GET', 'admin/logs.php?per_page=200', [], $token);
+if (($res['body']['success'] ?? false) === true) {
+    $auditLogs = is_array($res['body']['data']['logs'] ?? null) ? $res['body']['data']['logs'] : [];
+    $auditSummary = is_array($res['body']['data']['summary'] ?? null) ? $res['body']['data']['summary'] : [];
+}
+
+/* ---------- Maintenance view (health + sessions) ---------- */
+$maint = ['db_now' => null, 'tz_offset_seconds' => 0, 'table_counts' => [], 'sessions' => [],
+          'active_sessions' => 0, 'php_version' => PHP_VERSION];
+$res = admin_api_request('GET', 'admin/maintenance.php', [], $token);
+if (($res['body']['success'] ?? false) === true) {
+    $maint = array_merge($maint, $res['body']['data'] ?? []);
+}
+$maintCounts = $maint['table_counts'];
+$maintSessions = $maint['sessions'];
+$apiBase = rtrim(admin_api_base(), '/');
+function rmc_remain(string $expires): string {
+    $diff = strtotime($expires) - time();
+    if ($diff <= 0) return 'expired';
+    $h = intdiv($diff, 3600);
+    $m = intdiv($diff % 3600, 60);
+    return ($h > 0 ? "{$h}h " : '') . "{$m}m";
+}
+
+/* ---------- Full reports ---------- */
+$reportMeta = ['overall' => null, 'classes' => [], 'weakest' => [], 'daily' => []];
+$res = admin_api_request('GET', 'admin/reports.php', [], $token);
+if (($res['body']['success'] ?? false) === true) {
+    $reportMeta = array_merge($reportMeta, $res['body']['data'] ?? []);
+}
+$overall  = $reportMeta['overall'];
+$weakest  = $reportMeta['weakest'];
+$daily    = $reportMeta['daily'];
+$maxDaily = 1;
+foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -462,6 +533,152 @@ foreach (array_slice($classes, 0, 5) as $c) {
     font-size:12.5px;padding:8px 10px;border-radius:6px;margin-bottom:12px;}
   .modal-alert.show{display:block;}
 
+  /* ---------- Tag chips (portable admin.css styles) ---------- */
+  .tag{
+    display:inline-block;font-family:'Inter';font-size:10.5px;font-weight:700;
+    letter-spacing:.03em;padding:3px 9px;border-radius:20px;
+  }
+  .tag-navy{background:var(--navy-900);color:#fff;}
+  .tag-royal{background:#fbf3df;color:var(--navy-900);border:1px solid #eed28e;}
+  .tag-pass{background:var(--ok-bg);color:var(--ok);}
+  .tag-fail{background:var(--danger-bg);color:var(--danger);}
+  .tag-dim{background:#eef0f6;color:var(--ink-soft);}
+  .tag-arch{background:#e7edf9;color:var(--navy-800);}
+  .tag-amber{background:var(--amber);color:var(--navy-950);}
+
+  .status-chip{
+    display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:7px 13px;
+    border-radius:20px;border:1px solid var(--line);background:var(--paper-raised);
+    color:var(--ink-soft);cursor:pointer;white-space:nowrap;
+  }
+  .status-chip.active{background:var(--navy-900);color:#fff;border-color:var(--navy-900);}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;font-family:'Inter';font-size:11.5px;
+    padding:6px 11px;border-radius:20px;border:1px solid var(--line);
+    color:var(--ink-soft);background:var(--paper-raised);
+  }
+  .chip b{font-family:'IBM Plex Mono';font-weight:600;color:var(--navy-900);}
+
+  .muted{color:var(--ink-soft);}
+  .row-avatar{
+    width:32px;height:32px;border-radius:50%;flex:none;background:var(--navy-900);
+    color:var(--amber-dim);display:flex;align-items:center;justify-content:center;
+    font-size:11.5px;font-weight:600;font-family:'IBM Plex Mono';
+  }
+  .row-user{display:flex;align-items:center;gap:11px;}
+  .check-col{width:34px;}
+
+  /* ---------- Bulk bar (users) ---------- */
+  .bulk-bar{
+    display:none;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;
+    background:var(--paper-raised);border:1px solid var(--line);border-radius:8px;
+    padding:9px 13px;margin-bottom:14px;
+  }
+  .bulk-bar.show{display:flex;}
+  .bulk-bar .bulk-count{font-weight:600;color:var(--ink);margin-right:4px;}
+  .bulk-bar button{
+    font-family:'Inter';font-size:12px;font-weight:600;padding:6px 11px;border-radius:6px;
+    border:1px solid var(--line);background:var(--paper-raised);cursor:pointer;color:var(--navy-900);
+  }
+  .bulk-bar button:hover{background:var(--paper);}
+  .bulk-bar button.bulk-danger{color:var(--danger);}
+  .bulk-bar .bulk-clear{margin-left:auto;background:none;border:none;color:var(--ink-soft);font-size:12px;cursor:pointer;}
+  .bulk-bar .bulk-clear:hover{color:var(--navy-900);}
+
+  /* ---------- Filter bar (forms) ---------- */
+  .filter-bar{
+    display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;
+  }
+  .input{
+    font-family:'Inter';font-size:13px;color:var(--ink);
+    padding:9px 11px;border:1px solid var(--line);border-radius:6px;background:var(--paper-raised);
+  }
+  .input:focus{outline:none;border-color:var(--amber);}
+  .btn-filter{
+    font-family:'Inter';font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:6px;
+    border:1px solid var(--line);background:var(--paper-raised);color:var(--navy-900);cursor:pointer;
+  }
+  .btn-filter:hover{border-color:var(--amber);color:var(--navy-900);}
+
+  /* ---------- Forms in modals ---------- */
+  .modal-body-form{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;}
+  .modal-body-form .full{grid-column:1 / -1;}
+  .field{margin-bottom:0;}
+  .field label{font-size:12px;font-weight:600;color:var(--ink);display:block;margin-bottom:6px;}
+  .field .input{width:100%;}
+
+  /* ---------- Roster ---------- */
+  .roster-row{
+    display:flex;align-items:center;gap:10px;padding:10px 13px;font-size:13px;
+    border-bottom:1px solid #f0f1f6;cursor:pointer;
+  }
+  .roster-row:hover{background:var(--paper);}
+  .roster-row input{accent-color:var(--navy-900);}
+  .roster-row .muted{font-size:11.5px;}
+
+  /* ---------- Progress / charts (reports) ---------- */
+  .progress-track{background:#eef0f6;border-radius:20px;height:9px;overflow:hidden;}
+  .progress-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,var(--navy-900),var(--navy-700));}
+  .dash-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;align-items:start;}
+  .section-gap{margin-bottom:18px;}
+  .chart{
+    display:flex;align-items:flex-end;gap:5px;height:150px;padding:14px 18px 0;border-bottom:1px solid var(--line);
+  }
+  .chart-bar{
+    flex:1;background:var(--navy-800);border-radius:4px 4px 0 0;min-width:6px;position:relative;
+  }
+  .chart-bar.zero{background:#e6e8ef;}
+  .chart-bar:hover::after{
+    content:attr(data-count);position:absolute;top:-22px;left:50%;transform:translateX(-50%);
+    background:var(--navy-900);color:#fff;font-family:'IBM Plex Mono';font-size:10px;
+    padding:2px 6px;border-radius:4px;white-space:nowrap;
+  }
+  .chart-x{display:flex;gap:5px;padding:8px 18px 16px;}
+  .chart-x span{flex:1;text-align:center;font-family:'IBM Plex Mono';font-size:10px;color:var(--ink-soft);}
+  .weak-row{
+    display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f0f1f6;
+  }
+  .weak-row:last-child{border-bottom:none;}
+  .w-avg{
+    font-family:'IBM Plex Mono';font-size:15px;font-weight:600;color:var(--navy-900);flex:none;width:52px;
+  }
+  .w-body{min-width:0;flex:1;}
+  .w-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .w-sub{font-size:11.5px;color:var(--ink-soft);margin-top:1px;}
+
+  /* ---------- Exam detail modal ---------- */
+  .ed-questions .qrow{
+    display:flex;gap:12px;padding:12px 0;border-bottom:1px solid #f0f1f6;font-size:13px;
+  }
+  .ed-questions .qrow:last-child{border-bottom:none;}
+  .qnum{font-family:'IBM Plex Mono';font-size:11px;color:var(--amber);flex:none;font-weight:600;}
+  .qtext{font-weight:500;}
+  .correct{color:var(--ok);font-size:12px;}
+
+  /* ---------- Empty state ---------- */
+  .empty-state{
+    text-align:center;color:var(--ink-soft);font-size:13px;padding:26px 20px;line-height:1.6;
+  }
+  .empty-state .big{font-size:20px;display:block;margin-bottom:6px;}
+
+  /* ---------- Toolbar (list headers) ---------- */
+  .list-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap;}
+  .list-toolbar h2{font-size:19px;font-weight:600;margin:0;color:var(--navy-900);}
+  .table-tools{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid var(--line);font-size:12px;color:var(--ink-soft);}
+
+  /* ---------- Health tiles (maintenance) ---------- */
+  .health-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px;}
+  .health-tile{background:var(--paper-raised);border:1px solid var(--line);border-top:3px solid var(--navy-900);border-radius:var(--radius-card);padding:16px 18px;}
+  .health-tile.amber{border-top-color:var(--amber);}
+  .health-tile .lbl{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;}
+  .health-tile .num{font-family:'IBM Plex Mono';font-size:17px;font-weight:600;color:var(--navy-900);margin-top:6px;word-break:break-all;}
+  .soft-tip{
+    background:var(--paper-raised);border:1px solid var(--line);border-left:3px solid var(--amber);
+    border-radius:var(--radius-card);padding:16px 18px;
+  }
+  .soft-tip h4{font-family:'Fraunces',serif;font-size:14.5px;color:var(--navy-900);margin:0 0 6px;}
+  .soft-tip p{font-size:12.5px;color:var(--ink-soft);margin:0;line-height:1.6;}
+
   /* ---------- Mobile nav (hamburger + off-canvas sidebar) ---------- */
   .hamburger{
     display:none;width:36px;height:36px;flex:none;
@@ -549,17 +766,25 @@ foreach (array_slice($classes, 0, 5) as $c) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         User Management
       </li>
+      <li class="nav-item" data-view="classes">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+        Class Management
+      </li>
+      <li class="nav-item" data-view="assessments">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 9h18"/><path d="m9 14 2 2 4-4"/></svg>
+        Assessments
+      </li>
       <li class="nav-item" data-view="reports">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
         System-Wide Reports
       </li>
+      <li class="nav-item" data-view="logs">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>
+        System Logs
+      </li>
       <li class="nav-item" data-view="maintenance">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
         System Maintenance
-      </li>
-      <li class="nav-item" data-view="screens">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-        All Screens
       </li>
     </ul>
 
@@ -718,10 +943,18 @@ foreach (array_slice($classes, 0, 5) as $c) {
             <span class="filter-chip" data-filter="TEACHER">Teachers</span>
             <span class="filter-chip" data-filter="ADMIN">Admins</span>
           </div>
-          <button class="btn btn-amber" onclick="document.getElementById('modal-create').classList.add('open')">
+          <button class="btn btn-amber" id="btnAddUser" type="button">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
             Create User
           </button>
+        </div>
+
+        <div class="bulk-bar" id="bulkBar">
+          <span class="bulk-count" id="bulkCount">0 selected</span>
+          <button type="button" class="bulk-status" data-bulk="ACTIVE">Activate</button>
+          <button type="button" class="bulk-status" data-bulk="INACTIVE">Suspend</button>
+          <button type="button" class="bulk-status bulk-danger" data-bulk="BANNED">Ban</button>
+          <button type="button" class="bulk-clear" id="btnBulkClear">Clear selection</button>
         </div>
 
         <div class="table-panel">
@@ -729,8 +962,8 @@ foreach (array_slice($classes, 0, 5) as $c) {
           <table id="userTable">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Name</th>
+                <th class="check-col"><input type="checkbox" id="chkAll" title="Select all on this page"></th>
+                <th>User</th>
                 <th>Role</th>
                 <th>Section / Assignment</th>
                 <th>Status</th>
@@ -753,29 +986,372 @@ foreach (array_slice($classes, 0, 5) as $c) {
                               : ($roleName === 'TEACHER' ? 'Teaching faculty' : 'Office of the Registrar');
                   $created  = date('M j, Y', strtotime((string) ($u['created_at'] ?? 'now')));
                 ?>
-                <tr data-role="<?php echo e($roleName); ?>" data-status="<?php echo e($status); ?>" data-name="<?php echo e(strtolower(trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')))); ?>">
-                  <td class="id-cell"><?php echo e($idDisp); ?></td>
-                  <td class="name-cell"><strong><?php echo e(trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? ''))); ?></strong><span><?php echo e($u['email'] ?? ''); ?></span></td>
+                <tr data-id="<?php echo (int) $u['user_id']; ?>" data-role="<?php echo e($roleName); ?>" data-status="<?php echo e($status); ?>" data-name="<?php echo e(strtolower(trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')))); ?>">
+                  <td class="check-col">
+                    <input type="checkbox" class="row-check" value="<?php echo (int) $u['user_id']; ?>"
+                           <?php echo (int) $u['user_id'] === $self_id ? 'disabled title="This is you"' : ''; ?>>
+                  </td>
+                  <td class="name-cell">
+                    <div class="row-user">
+                      <div class="row-avatar"><?php echo e(strtoupper(mb_substr((string) ($u['first_name'] ?? 'S'), 0, 1) . mb_substr((string) ($u['last_name'] ?? 'T'), 0, 1))); ?></div>
+                      <div>
+                        <strong><?php echo e(trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? ''))); ?></strong>
+                        <span>@<?php echo e($u['username'] ?? ''); ?> · <?php echo e($u['email'] ?? ''); ?></span>
+                      </div>
+                    </div>
+                  </td>
                   <td><span class="role-badge <?php echo $roleCls; ?>"><?php echo e($roleName); ?></span></td>
-                  <td><?php echo e($assign); ?></td>
+                  <td class="id-cell" style="font-size:12.5px;color:var(--ink);"><?php echo e($assign); ?></td>
                   <td><span class="status-badge <?php echo $statusCls; ?>"><span class="status-dot"></span><?php echo e(ucfirst(strtolower($status))); ?></span></td>
                   <td class="mono" style="font-size:12px;color:var(--ink-soft);"><?php echo e($created); ?></td>
                   <td>
                     <div class="row-actions">
-                      <a class="icon-btn" href="users.php?search=<?php echo e(urlencode($u['username'] ?? '')); ?>" title="Manage in User Management">
+                      <button class="icon-btn" type="button" data-act="edit" title="Edit">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>
-                      </a>
+                      </button>
+                      <?php if ($status === 'ACTIVE'): ?>
+                        <button class="icon-btn" type="button" data-act="suspend" title="Suspend">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4v16"/><path d="M18 4v16"/></svg>
+                        </button>
+                        <button class="icon-btn" type="button" data-act="ban" title="Ban" style="color:var(--danger);">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m5 5 14 14"/></svg>
+                        </button>
+                      <?php elseif ($status === 'INACTIVE'): ?>
+                        <button class="icon-btn" type="button" data-act="activate" title="Activate">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5 9-10"/></svg>
+                        </button>
+                        <button class="icon-btn" type="button" data-act="ban" title="Ban" style="color:var(--danger);">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m5 5 14 14"/></svg>
+                        </button>
+                      <?php else: ?>
+                        <button class="icon-btn" type="button" data-act="activate" title="Reactivate">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5 9-10"/></svg>
+                        </button>
+                      <?php endif; ?>
                     </div>
                   </td>
                 </tr>
               <?php endforeach; ?>
               <?php if (!count($users)): ?>
-                <tr><td colspan="7" class="id-cell" style="text-align:center;padding:26px;">No users found.</td></tr>
+                <tr><td colspan="7" class="id-cell" style="text-align:center;padding:26px;font-size:13px;color:var(--ink-soft);">No users found.</td></tr>
               <?php endif; ?>
             </tbody>
           </table>
           </div>
-          <div class="table-note"><?php echo number_format(count($users)); ?> account(s) shown · full management (bulk suspend/ban, status toggles) lives in the User Management screen</div>
+          <div class="table-note"><?php echo number_format(count($users)); ?> account(s) shown · admins cannot be banned by checkbox (this is you — use row actions)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ CLASS MANAGEMENT VIEW ============ -->
+    <div class="view" id="view-classes">
+      <div class="topbar">
+        <div class="topbar-title">
+          <div class="hamburger" onclick="toggleSidebar()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </div>
+          <div>
+          <h1>Class Management</h1>
+          <div class="page-sub">Classes, sections, teacher assignments, and roster management</div>
+        </div>
+        </div>
+        <div class="topbar-right">
+          <div class="admin-menu">
+            <div class="admin-chip" onclick="toggleAdminMenu(this)">
+              <div class="avatar"><?php echo e($avatarChar); ?></div>
+              <div class="chip-text"><strong><?php echo e($adminShort); ?></strong><span>Administrator</span></div>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chip-caret"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="admin-dropdown">
+              <div class="admin-dropdown-divider"></div>
+              <a class="admin-dropdown-item logout" href="logout.php">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Log Out
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <div class="search-box" style="width:260px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" placeholder="Search subject, code, block…" id="classSearch">
+            </div>
+            <span class="filter-chip cls-chip active" data-filter="All">All</span>
+            <span class="filter-chip cls-chip" data-filter="ACTIVE">Active</span>
+            <span class="filter-chip cls-chip" data-filter="ARCHIVED">Archived</span>
+            <span class="muted mono" style="font-size:11.5px;"><?php echo (int) $classStatus['total'] ?> total · <?php echo (int) $classStatus['active'] ?> active · <?php echo (int) $classStatus['archived'] ?> archived</span>
+          </div>
+          <button class="btn btn-amber" id="btnAddClass" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+            Add Class
+          </button>
+        </div>
+
+        <div class="table-panel">
+          <div class="table-scroll">
+          <table id="classTable">
+            <thead>
+              <tr>
+                <th>Class</th>
+                <th>Teacher</th>
+                <th>Enrolled</th>
+                <th>Assessments</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($classesAll as $c): ?>
+                <?php
+                  $subject = e(trim(($c['subject_name'] ?? '') . ' · ' . ($c['subject_code'] ?? '')));
+                  $sub     = e(trim(($c['class_code'] ?? '') . ' · ' . ($c['block'] ?? '')));
+                  $teacher = trim(($c['teacher_first_name'] ?? '') . ' ' . ($c['teacher_last_name'] ?? ''));
+                  $created = e(date('M j, Y', strtotime($c['created_at'] ?? 'now')));
+                ?>
+                <tr data-id="<?php echo (int) $c['class_id']; ?>" data-status="<?php echo e($c['status'] ?? 'ACTIVE'); ?>" data-name="<?php echo e(strtolower(trim(($c['subject_name'] ?? '') . ' ' . ($c['class_code'] ?? '') . ' ' . ($c['block'] ?? '') . ' ' . $teacher))); ?>">
+                  <td style="min-width:200px;">
+                    <div><strong><?php echo $subject; ?></strong></div>
+                    <div style="font-size:11.5px;color:var(--ink-soft);"><?php echo $sub; ?></div>
+                  </td>
+                  <td><?php echo $teacher ? e($teacher) : '<span style="color:var(--ink-soft);">—</span>'; ?></td>
+                  <td class="mono"><?php echo (int) ($c['enrolled_count'] ?? 0); ?> students</td>
+                  <td class="mono"><?php echo (int) ($c['exam_count'] ?? 0); ?> exams</td>
+                  <td><span class="tag <?php echo ($c['status'] ?? '') === 'ARCHIVED' ? 'tag-dim' : 'tag-pass'; ?>"><?php echo e($c['status'] ?? 'ACTIVE'); ?></span></td>
+                  <td class="mono" style="font-size:12px;color:var(--ink-soft);"><?php echo $created; ?></td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="icon-btn" type="button" data-act="roster" title="Manage roster">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      </button>
+                      <button class="icon-btn" type="button" data-act="edit" title="Edit">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>
+                      </button>
+                      <button class="icon-btn<?php echo ($c['status'] ?? '') !== 'ARCHIVED' ? '" style="color:var(--danger);' : ''; ?>" type="button" data-act="archive" title="<?php echo ($c['status'] ?? '') === 'ARCHIVED' ? 'Restore' : 'Archive'; ?>">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18l-1.2 12.4a2 2 0 0 1-2 1.6H6.2a2 2 0 0 1-2-1.6L3 6z"/><path d="M10 11h4"/><path d="M6 3h12"/></svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+              <?php if (!count($classesAll)): ?>
+                <tr><td colspan="7" class="id-cell" style="text-align:center;padding:26px;font-size:13px;color:var(--ink-soft);">No classes found.</td></tr>
+              <?php endif; ?>
+            </tbody>
+          </table>
+          </div>
+          <div class="table-note"><?php echo number_format(count($classesAll)); ?> class(es) shown · enrollments and exam records are preserved when a class is archived</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ ASSESSMENTS VIEW ============ -->
+    <div class="view" id="view-assessments">
+      <div class="topbar">
+        <div class="topbar-title">
+          <div class="hamburger" onclick="toggleSidebar()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </div>
+          <div>
+          <h1>Assessment Oversight</h1>
+          <div class="page-sub">Exams, scheduling, force-close, and per-assessment drill-down</div>
+        </div>
+        </div>
+        <div class="topbar-right">
+          <div class="admin-menu">
+            <div class="admin-chip" onclick="toggleAdminMenu(this)">
+              <div class="avatar"><?php echo e($avatarChar); ?></div>
+              <div class="chip-text"><strong><?php echo e($adminShort); ?></strong><span>Administrator</span></div>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chip-caret"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="admin-dropdown">
+              <div class="admin-dropdown-divider"></div>
+              <a class="admin-dropdown-item logout" href="logout.php">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Log Out
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="toolbar">
+          <div class="toolbar-left" style="gap:8px;">
+            <span class="filter-chip ex-chip active" data-filter="All">All</span>
+            <span class="filter-chip ex-chip" data-filter="LIVE">LIVE · <?php echo (int) $examStatusCounts['LIVE']; ?></span>
+            <span class="filter-chip ex-chip" data-filter="SCHEDULED">SCHEDULED · <?php echo (int) $examStatusCounts['SCHEDULED']; ?></span>
+            <span class="filter-chip ex-chip" data-filter="DRAFT">DRAFT · <?php echo (int) $examStatusCounts['DRAFT']; ?></span>
+            <span class="filter-chip ex-chip" data-filter="CLOSED">CLOSED · <?php echo (int) $examStatusCounts['CLOSED']; ?></span>
+            <span class="filter-chip ex-chip" data-filter="ARCHIVED">ARCHIVED · <?php echo (int) $examStatusCounts['ARCHIVED']; ?></span>
+          </div>
+          <div class="search-box" style="width:230px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" placeholder="Search exam or subject…" id="examSearch">
+          </div>
+        </div>
+
+        <div class="table-panel">
+          <div class="table-scroll">
+          <table id="examTable">
+            <thead>
+              <tr>
+                <th>Assessment</th>
+                <th>Class</th>
+                <th>Schedule</th>
+                <th>Meta</th>
+                <th>Submissions / Avg</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($examsAll as $e): ?>
+                <?php
+                  $schedule = ($e['start_time'] && $e['end_time'])
+                      ? e(date('M j, g:i A', strtotime($e['start_time'])) . ' → ' . date('g:i A', strtotime($e['end_time'])))
+                      : '<span style="color:var(--ink-soft);">not scheduled</span>';
+                  $avg = ((int) ($e['submission_count'] ?? 0) > 0 && ($e['avg_pct'] ?? null) !== null)
+                      ? number_format((float) $e['avg_pct'], 1) . '%'
+                      : '—';
+                  $st = $e['status'] ?? 'DRAFT';
+                  $tagCls = $st === 'LIVE' ? 'tag-pass' : ($st === 'SCHEDULED' ? 'tag-royal' : ($st === 'CLOSED' ? 'tag-navy' : ($st === 'ARCHIVED' ? 'tag-arch' : 'tag-dim')));
+                ?>
+                <tr data-id="<?php echo (int) $e['exam_id']; ?>" data-status="<?php echo e($st); ?>" data-name="<?php echo e(strtolower(trim(($e['exam_name'] ?? '') . ' ' . ($e['subject_code'] ?? '') . ' ' . ($e['subject_name'] ?? '') . ' ' . ($e['block'] ?? '')))); ?>">
+                  <td style="min-width:190px;">
+                    <div><strong><?php echo e($e['exam_name'] ?? ''); ?></strong></div>
+                    <div style="font-size:11.5px;color:var(--ink-soft);"><?php echo e(trim(($e['subject_code'] ?? '') . ' · ' . ($e['block'] ?? ''))); ?></div>
+                  </td>
+                  <td><?php echo e($e['subject_name'] ?? ''); ?></td>
+                  <td style="font-size:12px;"><?php echo $schedule; ?></td>
+                  <td>
+                    <span class="mono"><?php echo (int) ($e['question_count'] ?? 0); ?></span> q · <span class="mono"><?php echo (int) ($e['points_count'] ?? 0); ?></span> pts<br>
+                    <span style="font-size:11px;color:var(--ink-soft);">pass <?php echo (int) ($e['passing_score'] ?? 0); ?>%</span>
+                  </td>
+                  <td><span class="mono"><?php echo number_format((int) ($e['submission_count'] ?? 0)); ?></span> · avg <span class="mono"><?php echo $avg; ?></span></td>
+                  <td><span class="tag <?php echo $tagCls; ?>"><?php echo e($st); ?></span></td>
+                  <td>
+                    <div class="row-actions">
+                      <button class="icon-btn" type="button" data-act="review" title="Review">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                      <?php if ($st === 'LIVE'): ?>
+                        <button class="icon-btn" type="button" data-act="force_close" title="Force close" style="color:var(--danger);">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m5 5 14 14"/></svg>
+                        </button>
+                      <?php endif; ?>
+                      <?php if (in_array($st, ['DRAFT', 'CLOSED', 'ARCHIVED'], true)): ?>
+                        <button class="icon-btn" type="button" data-act="schedule" title="<?php echo $st === 'ARCHIVED' ? 'Restore &amp; schedule' : 'Schedule'; ?>">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 9h18"/></svg>
+                        </button>
+                      <?php endif; ?>
+                      <?php if ($st !== 'ARCHIVED'): ?>
+                        <button class="icon-btn" type="button" data-act="archive" title="Archive">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18l-1.2 12.4a2 2 0 0 1-2 1.6H6.2a2 2 0 0 1-2-1.6L3 6z"/><path d="M10 11h4"/><path d="M6 3h12"/></svg>
+                        </button>
+                      <?php endif; ?>
+                    </div>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+              <?php if (!count($examsAll)): ?>
+                <tr><td colspan="7" class="id-cell" style="text-align:center;padding:26px;font-size:13px;color:var(--ink-soft);">No assessments found. Exams are created by teachers in the mobile app.</td></tr>
+              <?php endif; ?>
+            </tbody>
+          </table>
+          </div>
+          <div class="table-note"><?php echo number_format(count($examsAll)); ?> assessment(s) shown · click the eye icon to drill into questions and per-student submissions</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SYSTEM LOGS VIEW ============ -->
+    <div class="view" id="view-logs">
+      <div class="topbar">
+        <div class="topbar-title">
+          <div class="hamburger" onclick="toggleSidebar()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </div>
+          <div>
+          <h1>System Logs</h1>
+          <div class="page-sub">Audit trail from activity_logs — admin actions and sign-in activity</div>
+        </div>
+        </div>
+        <div class="topbar-right">
+          <div class="admin-menu">
+            <div class="admin-chip" onclick="toggleAdminMenu(this)">
+              <div class="avatar"><?php echo e($avatarChar); ?></div>
+              <div class="chip-text"><strong><?php echo e($adminShort); ?></strong><span>Administrator</span></div>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chip-caret"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="admin-dropdown">
+              <div class="admin-dropdown-divider"></div>
+              <a class="admin-dropdown-item logout" href="logout.php">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Log Out
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="toolbar">
+          <div class="toolbar-left" style="gap:8px;">
+            <span class="filter-chip log-chip active" data-filter="All">All</span>
+            <?php foreach ($auditSummary as $s): ?>
+              <span class="filter-chip log-chip" data-filter="<?php echo e($s['action']); ?>"><?php echo e($s['action']); ?> · <?php echo (int) $s['cnt']; ?></span>
+            <?php endforeach; ?>
+          </div>
+          <div class="toolbar-left" style="margin-top:8px;flex:1;justify-content:flex-end;">
+            <div class="search-box" style="width:230px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" placeholder="Search actor or description…" id="logSearch">
+            </div>
+            <input class="input" type="date" id="logFrom" aria-label="From date" style="width:155px;">
+            <input class="input" type="date" id="logTo" aria-label="To date" style="width:155px;">
+          </div>
+        </div>
+
+        <div class="table-panel">
+          <div class="table-tools"><span><?php echo number_format(count($auditLogs)); ?> log entr<?php echo count($auditLogs) === 1 ? 'y' : 'ies'; ?> shown</span><span class="muted">most recent first</span></div>
+          <div class="table-scroll">
+          <table id="logTable">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Actor</th>
+                <th>Action</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($auditLogs as $l): ?>
+                <?php
+                  $logAction = strtoupper((string) ($l['action'] ?? ''));
+                  $actor = trim(($l['first_name'] ?? '') . ' ' . ($l['last_name'] ?? ''));
+                  $actor = $actor !== '' ? $actor : ($l['username'] ?? 'system');
+                ?>
+                <tr data-action="<?php echo e($logAction); ?>" data-when="<?php echo e(date('Y-m-d', strtotime($l['created_at']))); ?>" data-search="<?php echo e(strtolower($actor . ' ' . ($l['description'] ?? '') . ' ' . ($l['username'] ?? ''))); ?>">
+                  <td class="mono" style="white-space:nowrap;font-size:12px;color:var(--ink-soft);"><?php echo e(date('M j, Y  g:i A', strtotime($l['created_at']))); ?></td>
+                  <td>
+                    <div><strong style="font-weight:600;"><?php echo e($actor); ?></strong></div>
+                    <?php if ($l['username']): ?><div style="font-size:11px;color:var(--ink-soft);">@<?php echo e($l['username']); ?></div><?php endif; ?>
+                  </td>
+                  <td><span class="tag tag-royal"><?php echo e($logAction); ?></span></td>
+                  <td style="color:var(--ink-soft);max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo e($l['description'] ?? ''); ?>"><?php echo e($l['description'] ?? ''); ?></td>
+                </tr>
+              <?php endforeach; ?>
+              <?php if (!count($auditLogs)): ?>
+                <tr><td colspan="4" class="id-cell" style="text-align:center;padding:26px;font-size:13px;color:var(--ink-soft);">No log entries found.</td></tr>
+              <?php endif; ?>
+            </tbody>
+          </table>
+          </div>
         </div>
       </div>
     </div>
@@ -811,15 +1387,27 @@ foreach (array_slice($classes, 0, 5) as $c) {
       </div>
 
       <div class="content">
-        <div class="export-row">
-          <a class="btn btn-ghost btn-sm" href="logs.php">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export CSV
-          </a>
-          <a class="btn btn-primary btn-sm" href="reports.php">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            Full Reports
-          </a>
+        <div class="stat-row" style="margin-top:4px;">
+          <div class="stat-card">
+            <div class="stat-label">Overall Average</div>
+            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? number_format((float) $overall['avg_pct'], 1) . '%' : '—'; ?></div>
+            <div class="stat-delta flat">across <?php echo $overall ? (int) $overall['exam_count'] : 0; ?> assessments</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Pass Rate</div>
+            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? number_format((float) $overall['pass_rate'], 1) . '%' : '—'; ?></div>
+            <div class="stat-delta flat"><?php echo $overall ? (int) $overall['pass_count'] . ' of ' . (int) $overall['submission_count'] . ' submissions passed' : ''; ?></div>
+          </div>
+          <div class="stat-card accent">
+            <div class="stat-label">Submissions</div>
+            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? number_format((int) $overall['submission_count']) : '—'; ?></div>
+            <div class="stat-delta flat"><?php echo $overall ? number_format((int) $overall['attempts_users']) . ' distinct students' : ''; ?></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Exam Footprint</div>
+            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? (int) $overall['exam_count'] : '—'; ?></div>
+            <div class="stat-delta flat"><?php echo $overall ? (int) $overall['active_classes'] . ' active classes' : ''; ?></div>
+          </div>
         </div>
 
         <div class="report-grid">
@@ -858,6 +1446,81 @@ foreach (array_slice($classes, 0, 5) as $c) {
             <div class="integrity-row"><span>Total integrity flags recorded (7 days)</span><span class="integrity-count"><?php echo number_format($flagged7d); ?></span></div>
           </div>
         </div>
+
+        <div class="panel section-gap" style="padding:0 0 8px;">
+          <div class="panel-head"><h2>Class Averages</h2><span class="panel-note">avg % and pass rate per class</span></div>
+          <?php if (empty($reportMeta['classes'])): ?>
+            <div class="panel-empty">No classes to report on yet.</div>
+          <?php else: ?>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr><th>Class</th><th style="width:34%;">Average</th><th>Submissions</th><th>Pass Rate</th></tr>
+                </thead>
+                <tbody>
+                  <?php foreach ($reportMeta['classes'] as $c): ?>
+                    <?php
+                      $pct = (float) ($c['avg_pct'] ?? 0);
+                      $pr  = (float) ($c['pass_rate'] ?? 0);
+                      $prCls = $pr >= 60 ? 'tag-pass' : ($pr >= 40 ? 'tag-royal' : 'tag-fail');
+                    ?>
+                    <tr>
+                      <td>
+                        <div><strong style="font-weight:600;"><?php echo e(trim(($c['subject_name'] ?? '') . ' · ' . ($c['subject_code'] ?? ''))); ?></strong></div>
+                        <div style="font-size:11.5px;color:var(--ink-soft);"><?php echo e(trim(($c['block'] ?? '') . ' · ' . (int) ($c['exam_count'] ?? 0) . ' exam(s)')); ?></div>
+                      </td>
+                      <td>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                          <div class="progress-track" style="flex:1;"><div class="progress-fill" style="width:<?php echo min(100, $pct); ?>%;"></div></div>
+                          <span class="mono" style="font-size:12.5px;"><?php echo number_format($pct, 1); ?>%</span>
+                        </div>
+                      </td>
+                      <td class="mono"><?php echo (int) ($c['submission_count'] ?? 0); ?></td>
+                      <td><span class="tag <?php echo $prCls; ?>"><?php echo number_format($pr, 1); ?>%</span></td>
+                    </tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
+          <?php endif; ?>
+        </div>
+
+        <div class="panel section-gap">
+          <div class="panel-head"><h2>Submissions — last 14 days</h2><span class="panel-note"><?php echo number_format(array_sum(array_column($daily, 'count'))); ?> total</span></div>
+          <?php if (empty($daily)): ?>
+            <div class="panel-empty">No activity to chart.</div>
+          <?php else: ?>
+            <div class="chart">
+              <?php foreach ($daily as $d): ?>
+                <?php $h = ((int) $d['count'] / $maxDaily) * 100; ?>
+                <div class="chart-bar <?php echo (int) $d['count'] === 0 ? 'zero' : ''; ?>" style="height:<?php echo max(3, $h); ?>%;" data-count="<?php echo (int) $d['count']; ?>"></div>
+              <?php endforeach; ?>
+            </div>
+            <div class="chart-x">
+              <?php foreach ($daily as $d): ?>
+                <span><?php echo e(date('d', strtotime($d['date']))); ?></span>
+              <?php endforeach; ?>
+            </div>
+          <?php endif; ?>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>Weakest Assessments</h2><span class="panel-note">lowest average first</span></div>
+          <?php if (empty($weakest)): ?>
+            <div class="panel-empty">No submitted assessments to rank yet.</div>
+          <?php else: ?>
+            <?php foreach ($weakest as $w): ?>
+              <div class="weak-row">
+                <span class="w-avg" title="average score"><?php echo number_format((float) $w['avg_pct'], 1); ?>%</span>
+                <div class="w-body">
+                  <div class="w-name"><?php echo e($w['exam_name']); ?></div>
+                  <div class="w-sub"><?php echo e(trim(($w['subject_code'] ?? '') . ' · ' . ($w['block'] ?? ''))); ?> · <?php echo (int) $w['submission_count']; ?> sub(s) · pass <?php echo (int) $w['passing_score']; ?>%</div>
+                </div>
+                <span class="tag <?php echo (float) $w['pass_rate'] >= 60 ? 'tag-pass' : ((float) $w['pass_rate'] >= 40 ? 'tag-royal' : 'tag-fail'); ?>"><?php echo number_format((float) $w['pass_rate'], 0); ?>%</span>
+              </div>
+            <?php endforeach; ?>
+          <?php endif; ?>
+        </div>
       </div>
     </div>
 
@@ -892,21 +1555,88 @@ foreach (array_slice($classes, 0, 5) as $c) {
       </div>
 
       <div class="content">
-        <div class="maint-grid">
-          <div class="maint-card">
-            <h3>Database &amp; Sessions</h3>
-            <p>Monitor active user sessions and terminate compromised or duplicate sign-ins platform-wide.</p>
-            <a class="btn btn-primary btn-sm" href="maintenance.php">Open Sessions Console</a>
-            <div class="maint-meta"><span>Live exams</span><span class="mono"><?php echo number_format($liveExams); ?></span></div>
+        <div class="health-grid">
+          <div class="health-tile amber">
+            <div class="lbl">Database</div>
+            <div class="num" style="font-size:15px;">ONLINE</div>
+            <div class="lbl" style="margin-top:6px;text-transform:none;">now: <?php echo e((string) ($maint['db_now'] ?? '—')); ?></div>
+          </div>
+          <div class="health-tile">
+            <div class="lbl">Timezone offset</div>
+            <div class="num" style="font-size:15px;"><?php echo sprintf('%+d:%02d', intdiv((int) $maint['tz_offset_seconds'], 3600), intdiv(abs((int) $maint['tz_offset_seconds']), 60) % 60); ?></div>
+            <div class="lbl" style="margin-top:6px;text-transform:none;">server now: <?php echo e(date('M j, Y g:i A')); ?></div>
+          </div>
+          <div class="health-tile">
+            <div class="lbl">PHP</div>
+            <div class="num" style="font-size:15px;"><?php echo e(PHP_VERSION); ?></div>
+            <div class="lbl" style="margin-top:6px;text-transform:none;"><?php echo e(PHP_INT_SIZE === 8 ? '64-bit' : '32-bit'); ?></div>
+          </div>
+          <div class="health-tile">
+            <div class="lbl">API base</div>
+            <div class="num" style="font-size:12.5px;"><?php echo e($apiBase); ?></div>
+            <div class="lbl" style="margin-top:6px;text-transform:none;">derived from request host</div>
+          </div>
+        </div>
+
+        <div class="dash-grid" style="margin-bottom:18px;">
+          <div style="min-width:0;">
+            <div class="panel">
+              <div class="panel-head"><h2>Data Inventory</h2><span class="panel-note">row counts across core tables</span></div>
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>Table</th><th>Rows</th></tr></thead>
+                  <tbody>
+                    <?php foreach ($maintCounts as $name => $n): ?>
+                      <tr><td><span class="mono" style="color:var(--navy-900);"><?php echo e($name); ?></span></td><td><span class="mono"><?php echo number_format($n); ?></span></td></tr>
+                    <?php endforeach; ?>
+                    <?php if (empty($maintCounts)): ?>
+                      <tr><td colspan="2" class="id-cell" style="text-align:center;padding:20px;color:var(--ink-soft);">No table data available.</td></tr>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
+          <aside style="min-width:0;">
+            <div class="panel">
+              <div class="panel-head"><h2>Active Sessions</h2><span class="panel-note"><?php echo (int) $maint['active_sessions']; ?> total</span></div>
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>User</th><th>Role</th><th>Expires</th><th></th></tr></thead>
+                  <tbody>
+                    <?php foreach ($maintSessions as $s): ?>
+                      <?php $own = $token === ($s['session_id'] ?? ''); ?>
+                      <tr>
+                        <td>
+                          <div><strong style="font-weight:600;"><?php echo e(trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''))); ?></strong> <?php if ($own): ?><span class="tag tag-amber" style="padding:0 5px;font-size:9px;vertical-align:middle;">YOU</span><?php endif; ?></div>
+                          <div style="font-size:11px;color:var(--ink-soft);">@<?php echo e($s['username'] ?? ''); ?></div>
+                        </td>
+                        <td><span class="tag tag-navy"><?php echo e($s['role_name'] ?? ''); ?></span></td>
+                        <td class="mono" style="font-size:12px;color:var(--ink-soft);"><?php echo e(rmc_remain((string) ($s['expires_at'] ?? 'now'))); ?></td>
+                        <td><?php if (!$own): ?><button class="btn-filter" type="button" data-kill="<?php echo e($s['session_id'] ?? ''); ?>" data-user="<?php echo e(trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''))); ?>">End</button><?php endif; ?></td>
+                      </tr>
+                    <?php endforeach; ?>
+                    <?php if (empty($maintSessions)): ?>
+                      <tr><td colspan="4" class="id-cell" style="text-align:center;padding:20px;color:var(--ink-soft);">No sessions right now.</td></tr>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+              <div class="filter-bar" style="margin:12px 14px 14px;" data-kill-user-form>
+                <input class="input" type="text" name="user_ids" placeholder="End all sessions for user id(s) — e.g. 3 7 12" style="flex:1;min-width:140px;">
+                <button class="btn-filter" type="submit">End sessions</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div class="maint-grid" style="margin-bottom:18px;">
           <div class="maint-card">
             <h3>School Year Management</h3>
             <p>Open or close the active academic period, and archive the previous year's records for reporting.</p>
-            <a class="btn btn-primary btn-sm" href="maintenance.php">Manage Academic Period</a>
             <div class="maint-meta"><span>Current period</span><span class="mono">S.Y. 2026–2027</span></div>
           </div>
-
           <div class="maint-card">
             <h3>Platform Controls</h3>
             <div class="toggle-row">
@@ -918,88 +1648,37 @@ foreach (array_slice($classes, 0, 5) as $c) {
               <div class="switch on"></div>
             </div>
             <div class="toggle-row">
-              <div class="toggle-row-text"><strong>Maintenance mode</strong><span>Managed from the Sessions Console</span></div>
+              <div class="toggle-row-text"><strong>Maintenance mode</strong><span>Managed from active sessions above</span></div>
               <div class="switch"></div>
             </div>
           </div>
+        </div>
 
-          <div class="maint-card">
-            <h3>System Logs</h3>
-            <p>Raw login, submission, and error logs for troubleshooting and audit purposes.</p>
-            <a class="btn btn-ghost btn-sm" href="logs.php">View Full Logs</a>
-            <div class="maint-meta"><span>Audit trail</span><span class="mono">activity_logs</span></div>
+        <div class="panel">
+          <div class="panel-head"><h2>Admin Guide &amp; Operations</h2><span class="panel-note">Help Center content</span></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;padding:16px 20px 20px;">
+            <div class="soft-tip">
+              <h4>Getting started</h4>
+              <p>Manage students, teachers and sections from <b>User Management</b>. Build class rosters under <b>Class Management</b>. Oversee every exam (force-close a live exam, schedule or reopen windows, archive) under <b>Assessments</b> — drill into any exam via the eye icon.</p>
+            </div>
+            <div class="soft-tip">
+              <h4>Defaults &amp; security</h4>
+              <p>Seeded admin: <span class="mono">admin</span> / <span class="mono">admin123</span> (change it via User Management). Suspending or banning a user signs out every one of their sessions immediately.</p>
+            </div>
+            <div class="soft-tip">
+              <h4>Scoring</h4>
+              <p>Percentages are derived from raw earned points: <span class="mono">score / SUM(points) × 100</span>. Pass/fail compares that percentage to the exam’s passing threshold. Items are all-or-nothing — no partial credit.</p>
+            </div>
+            <div class="soft-tip">
+              <h4>Backups &amp; deploy</h4>
+              <p>Use the migration files in <span class="mono">database/</span>. This panel and the PHP API are plain PHP — deploy the same tree to Render; the API base auto-derives to the hosting host.</p>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ============ ALL SCREENS VIEW ============ -->
-    <div class="view" id="view-screens">
-      <div class="topbar">
-        <div class="topbar-title">
-          <div class="hamburger" onclick="toggleSidebar()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-          </div>
-          <div>
-          <h1>All Screens</h1>
-          <div class="page-sub">Every module of the admin panel, including full-scale management screens</div>
-        </div>
-        </div>
-        <div class="topbar-right">
-          <div class="admin-menu">
-            <div class="admin-chip" onclick="toggleAdminMenu(this)">
-              <div class="avatar"><?php echo e($avatarChar); ?></div>
-              <div class="chip-text"><strong><?php echo e($adminShort); ?></strong><span>Administrator</span></div>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chip-caret"><polyline points="6 9 12 15 18 9"/></svg>
-            </div>
-            <div class="admin-dropdown">
-              <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Log Out
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="content">
-        <div class="maint-grid">
-          <div class="maint-card">
-            <h3>User Management</h3>
-            <p>Full user CRUD, bulk suspend/ban/activate, search and filters.</p>
-            <a class="btn btn-primary btn-sm" href="users.php">Open User Management</a>
-          </div>
-          <div class="maint-card">
-            <h3>Class Management</h3>
-            <p>Classes, sections, teacher assignments, and roster management.</p>
-            <a class="btn btn-primary btn-sm" href="classes.php">Open Class Management</a>
-          </div>
-          <div class="maint-card">
-            <h3>Assessment Oversight</h3>
-            <p>Exams, scheduling, force-close, and per-assessment drill-down.</p>
-            <a class="btn btn-primary btn-sm" href="assessments.php">Open Assessment Oversight</a>
-          </div>
-          <div class="maint-card">
-            <h3>Reports &amp; Analytics</h3>
-            <p>Full institution-level analytics, per-class and per-exam breakdowns.</p>
-            <a class="btn btn-primary btn-sm" href="reports.php">Open Reports &amp; Analytics</a>
-          </div>
-          <div class="maint-card">
-            <h3>System Logs</h3>
-            <p>Raw audit trail with filters for review.</p>
-            <a class="btn btn-primary btn-sm" href="logs.php">Open System Logs</a>
-          </div>
-          <div class="maint-card">
-            <h3>System Maintenance</h3>
-            <p>Sessions console, hardware status, and platform-level maintenance.</p>
-            <a class="btn btn-primary btn-sm" href="maintenance.php">Open Maintenance</a>
-          </div>
-        </div>
-      </div>
     </div>
-
-  </div>
 </div>
 
 <!-- ============ CREATE USER MODAL ============ -->
@@ -1057,11 +1736,176 @@ foreach (array_slice($classes, 0, 5) as $c) {
   </div>
 </div>
 
+<!-- ============ EDIT USER MODAL ============ -->
+<div class="modal-backdrop" id="modal-user">
+  <div class="modal" style="max-width:560px;width:100%;">
+    <h3 id="userModalTitle">Edit User</h3>
+    <div class="modal-sub" id="userModalSub">Account details and state.</div>
+    <div class="modal-alert" id="userFormAlert"></div>
+    <form id="userForm" novalidate>
+      <input type="hidden" name="user_id" id="uid">
+      <div class="modal-body-form">
+        <div class="field"><label for="f_fname">First name</label><input class="input" id="f_fname" name="first_name" required></div>
+        <div class="field"><label for="f_lname">Last name</label><input class="input" id="f_lname" name="last_name" required></div>
+        <div class="field"><label for="f_username">Username</label><input class="input" id="f_username" name="username" autocomplete="off" required></div>
+        <div class="field"><label for="f_email">Email</label><input class="input" id="f_email" name="email" type="email" required></div>
+        <div class="field">
+          <label for="f_role">Role</label>
+          <select class="input" id="f_role" name="role_id">
+            <option value="1">Student</option>
+            <option value="2">Teacher</option>
+            <option value="3">Admin</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="f_status">Status</label>
+          <select class="input" id="f_status" name="status">
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+            <option value="BANNED">Banned</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label for="f_password" id="pwLabel">Password</label>
+          <input class="input" id="f_password" name="password" type="password" autocomplete="new-password">
+          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;" id="pwHint">At least 8 characters with a number.</div>
+        </div>
+        <div class="field" id="wrap_sid"><label for="f_sid">Student ID</label><input class="input" id="f_sid" name="student_id"></div>
+        <div class="field" id="wrap_year"><label for="f_year">Year level</label><input class="input" id="f_year" name="year_level" placeholder="2nd Year"></div>
+        <div class="field full" id="wrap_sec"><label for="f_sec">Section</label><input class="input" id="f_sec" name="section" placeholder="BSIT 2-B"></div>
+      </div>
+      <div class="modal-alert" id="selfLock" style="display:none;background:var(--warn-bg);border-color:rgba(179,84,30,0.3);color:var(--warn);">You cannot change your own role or status.</div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-close-m="modal-user">Cancel</button>
+        <button class="btn btn-amber" type="submit" id="btnUserSave">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ CLASS MODAL ============ -->
+<div class="modal-backdrop" id="modal-class">
+  <div class="modal" style="max-width:520px;width:100%;">
+    <h3 id="classModalTitle">Add Class</h3>
+    <div class="modal-sub" id="classModalSub">Create a class and assign its teacher.</div>
+    <div class="modal-alert" id="classFormAlert"></div>
+    <form id="classForm" novalidate>
+      <input type="hidden" name="class_id" id="cid">
+      <div class="modal-body-form">
+        <div class="field"><label for="c_scode">Subject code</label><input class="input" id="c_scode" name="subject_code" placeholder="HUM02" required></div>
+        <div class="field"><label for="c_ccode">Class code</label><input class="input" id="c_ccode" name="class_code" placeholder="MATH2A" required></div>
+        <div class="field full"><label for="c_sname">Subject name</label><input class="input" id="c_sname" name="subject_name" placeholder="Mathematics 2" required></div>
+        <div class="field full"><label for="c_block">Block / section</label><input class="input" id="c_block" name="block" placeholder="BSIT 2-A" required></div>
+        <div class="field">
+          <label for="c_teacher">Teacher</label>
+          <select class="input" id="c_teacher" name="teacher_id" required>
+            <option value="">Select teacher…</option>
+            <?php foreach ($teachers as $t): ?>
+              <option value="<?php echo (int) $t['user_id']; ?>"><?php echo e(trim(($t['first_name'] ?? '') . ' ' . ($t['last_name'] ?? ''))); ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label for="c_status">Status</label>
+          <select class="input" id="c_status" name="status">
+            <option value="ACTIVE">Active</option>
+            <option value="ARCHIVED">Archived</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-close-m="modal-class">Cancel</button>
+        <button class="btn btn-amber" type="submit" id="btnClassSave">Save Class</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ ROSTER MODAL ============ -->
+<div class="modal-backdrop" id="modal-roster">
+  <div class="modal" style="max-width:640px;width:100%;">
+    <h3 id="rosterTitle">Class Roster</h3>
+    <div class="modal-sub" id="rosterSub">Check the students enrolled in this class; save to apply.</div>
+    <div class="modal-alert" id="rosterAlert"></div>
+    <div class="field" style="margin-bottom:12px;">
+      <input class="input" type="search" id="rosterSearch" placeholder="Filter students by name or student ID…" style="width:100%;">
+    </div>
+    <div style="max-height:340px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;">
+      <div class="empty-state" id="rosterLoading">Loading roster…</div>
+      <div id="rosterList"></div>
+    </div>
+    <div class="muted" style="font-size:12px;margin:10px 0 0;"><span id="rosterChecked">0</span> enrolled · <span id="rosterTotal">0</span> students → <span class="mono">ACTIVE</span> accounts only</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" data-close-m="modal-roster">Cancel</button>
+      <button class="btn btn-amber" type="button" id="btnRosterSave">Save Roster</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCHEDULE MODAL ============ -->
+<div class="modal-backdrop" id="modal-schedule">
+  <div class="modal" style="max-width:440px;width:100%;">
+    <h3 id="schedTitle">Schedule Assessment</h3>
+    <div class="modal-sub" id="schedSub">Choose the availability window. The exam runs between these times.</div>
+    <div class="modal-alert" id="schedAlert"></div>
+    <div class="modal-body-form">
+      <div class="field"><label for="s_start">Start time</label><input class="input" type="datetime-local" id="s_start" required></div>
+      <div class="field"><label for="s_end">End time</label><input class="input" type="datetime-local" id="s_end" required></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" data-close-m="modal-schedule">Cancel</button>
+      <button class="btn btn-amber" type="button" id="btnSchedGo">Save Schedule</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ EXAM DETAIL MODAL ============ -->
+<div class="modal-backdrop" id="modal-exam">
+  <div class="modal" style="max-width:760px;width:100%;">
+    <h3 id="edTitle">Assessment Details</h3>
+    <div class="modal-sub" id="edSub"></div>
+    <div class="modal-alert" id="edAlert"></div>
+    <div id="edBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" data-close-m="modal-exam">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONFIRM MODAL ============ -->
+<div class="modal-backdrop" id="modal-confirm">
+  <div class="modal" style="max-width:400px;width:100%;">
+    <h3 id="cfTitle">Are you sure?</h3>
+    <div class="modal-sub" id="cfBody" style="margin-bottom:16px;"></div>
+    <div class="modal-alert" id="cfAlert"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" data-close-m="modal-confirm">Cancel</button>
+      <button class="btn btn-amber" type="button" id="cfGo" style="background:var(--navy-900);color:#fff;">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ KILL SESSION MODAL ============ -->
+<div class="modal-backdrop" id="modal-kill">
+  <div class="modal" style="max-width:420px;width:100%;">
+    <h3>End session</h3>
+    <p style="color:var(--ink-soft);font-size:13.5px;margin:10px 0 16px;">Sign out <b id="killName" style="color:var(--ink);"></b>. This revokes their API token immediately — the user will be returned to the login screen on their next action.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" data-close-m="modal-kill">Cancel</button>
+      <button class="btn btn-amber" type="button" id="killConfirm" style="background:var(--danger);color:#fff;">End session</button>
+    </div>
+  </div>
+</div>
+
 <script>
   var RMC_ADMIN = <?php echo json_encode([
       'name' => $adminShort,
       'selfId' => (int) ($admin['user_id'] ?? 0),
   ]); ?>;
+  window.USERS   = <?php echo json_encode($users); ?>;
+  window.CLASSES = <?php echo json_encode($classesAll); ?>;
+  window.TEACHERS = <?php echo json_encode($teachers); ?>;
+  window.EXAMS   = <?php echo json_encode($examsAll); ?>;
 
   function toggleSidebar(){
     document.getElementById('sidebar').classList.toggle('open');
@@ -1081,10 +1925,10 @@ foreach (array_slice($classes, 0, 5) as $c) {
     });
   });
 
-  document.querySelectorAll('.filter-chip').forEach(function(chip){
+  document.querySelectorAll('#view-users .filter-chip').forEach(function(chip){
     chip.addEventListener('click', function(){
       var filter = chip.getAttribute('data-filter') || 'All';
-      document.querySelectorAll('.filter-chip').forEach(function(c){ c.classList.remove('active'); });
+      document.querySelectorAll('#view-users .filter-chip').forEach(function(c){ c.classList.remove('active'); });
       chip.classList.add('active');
       document.querySelectorAll('#userTable tbody tr').forEach(function(tr){
         var show = filter === 'All' || tr.getAttribute('data-role') === filter;
@@ -1172,7 +2016,543 @@ foreach (array_slice($classes, 0, 5) as $c) {
   modal.addEventListener('click', function(e){
     if(e.target === this) this.classList.remove('open');
   });
-</script>
+
+  /* ================= consolidation modules ================= */
+
+  function openMd(id){ document.getElementById(id).classList.add('open'); }
+  function closeMd(id){ document.getElementById(id).classList.remove('open'); }
+  document.querySelectorAll('[data-close-m]').forEach(function(b){
+    b.addEventListener('click', function(){ closeMd(b.getAttribute('data-close-m')); });
+  });
+  document.querySelectorAll('.modal-backdrop').forEach(function(ov){
+    ov.addEventListener('click', function(e){
+      if(e.target === ov) ov.classList.remove('open');
+    });
+  });
+
+  function postAjax(action, payload){
+    return fetch('ajax.php?action=' + action, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function(r){ return r.json(); });
+  }
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch){
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch];
+    });
+  }
+  function dstr(ts){
+    if (!ts) return '';
+    var d = new Date(String(ts).replace(' ', 'T'));
+    if (isNaN(d.getTime())) return ts;
+    var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var h = d.getHours();
+    return m[d.getMonth()] + ' ' + d.getDate() + ', ' + ((h % 12) || 12) + ':' + String(d.getMinutes()).padStart(2,'0') + ' ' + (h < 12 ? 'AM' : 'PM');
+  }
+  function fmtSecs(s){
+    s = parseInt(s, 10);
+    if (!Number.isFinite(s)) return '—';
+    var m = Math.floor(s / 60), ss = s % 60;
+    return m + ':' + String(ss).padStart(2, '0');
+  }
+
+  /* confirm engine */
+  var cfAlert = document.getElementById('cfAlert');
+  var cfGo = document.getElementById('cfGo');
+  var cfAction = null;
+  function askConfirm(title, body, fn){
+    document.getElementById('cfTitle').textContent = title;
+    document.getElementById('cfBody').textContent = body;
+    cfAlert.classList.remove('show');
+    cfAction = fn;
+    openMd('modal-confirm');
+  }
+  cfGo.addEventListener('click', function(){
+    if (!cfAction) return;
+    cfGo.disabled = true;
+    cfAction(function(ok, msg){
+      cfGo.disabled = false;
+      if (ok) { window.location.reload(); }
+      else {
+        cfAlert.textContent = msg || 'Request failed. Please try again.';
+        cfAlert.classList.add('show');
+      }
+    });
+  });
+
+  /* ---------- USERS ---------- */
+  var usersById = {};
+  (window.USERS || []).forEach(function(u){ usersById[u.user_id] = u; });
+  var userForm = document.getElementById('userForm');
+  var editingUserId = null;
+
+  function setStudentFields(roleId){
+    ['wrap_sid','wrap_year','wrap_sec'].forEach(function(id){
+      document.getElementById(id).style.display = roleId === 1 ? '' : 'none';
+    });
+  }
+  document.getElementById('f_role').addEventListener('change', function(){ setStudentFields(Number(this.value)); });
+
+  document.getElementById('btnAddUser').addEventListener('click', function(){
+    editingUserId = null;
+    userForm.reset();
+    document.getElementById('uid').value = '';
+    document.getElementById('userModalTitle').textContent = 'Create User';
+    document.getElementById('userModalSub').textContent = 'Create a new account. Admins are always provisioned by an existing admin.';
+    document.getElementById('pwLabel').textContent = 'Password';
+    document.getElementById('pwHint').textContent = 'At least 8 characters with a number.';
+    document.getElementById('f_password').required = true;
+    document.getElementById('f_role').disabled = false;
+    document.getElementById('f_status').disabled = false;
+    document.getElementById('f_status').value = 'ACTIVE';
+    document.getElementById('selfLock').style.display = 'none';
+    document.getElementById('userFormAlert').classList.remove('show');
+    setStudentFields(Number(document.getElementById('f_role').value));
+    openMd('modal-user');
+  });
+
+  function openEditUser(id){
+    var u = usersById[id]; if (!u) return;
+    editingUserId = id;
+    userForm.reset();
+    document.getElementById('uid').value = u.user_id;
+    document.getElementById('f_fname').value = u.first_name;
+    document.getElementById('f_lname').value = u.last_name;
+    document.getElementById('f_username').value = u.username;
+    document.getElementById('f_email').value = u.email;
+    document.getElementById('f_role').value = String(u.role_id);
+    document.getElementById('f_status').value = u.status;
+    document.getElementById('f_sid').value = u.student_id || '';
+    document.getElementById('f_year').value = u.year_level || '';
+    document.getElementById('f_sec').value = u.section || '';
+    document.getElementById('f_password').value = '';
+    document.getElementById('f_password').required = false;
+    document.getElementById('pwLabel').textContent = 'Password (leave blank to keep current)';
+    document.getElementById('pwHint').textContent = 'Only filled in when resetting the password.';
+    document.getElementById('selfLock').style.display = (u.user_id === RMC_ADMIN.selfId) ? 'block' : 'none';
+    document.getElementById('f_role').disabled = u.user_id === RMC_ADMIN.selfId;
+    document.getElementById('f_status').disabled = u.user_id === RMC_ADMIN.selfId;
+    document.getElementById('userFormAlert').classList.remove('show');
+    document.getElementById('userModalTitle').textContent = 'Edit User';
+    document.getElementById('userModalSub').textContent = '@' + u.username + ' — account details and state.';
+    setStudentFields(Number(u.role_id));
+    openMd('modal-user');
+  }
+
+  document.getElementById('userForm').addEventListener('submit', function(ev){
+    ev.preventDefault();
+    document.getElementById('userFormAlert').classList.remove('show');
+    var fd = new FormData(userForm);
+    var roleEl = document.getElementById('f_role');
+    var stEl = document.getElementById('f_status');
+    var roleId = Number(roleEl.disabled ? roleEl.value : fd.get('role_id'));
+    var statusVal = stEl.disabled ? stEl.value : fd.get('status');
+    var payload = {
+      first_name: fd.get('first_name'), last_name: fd.get('last_name'),
+      username: fd.get('username'), email: fd.get('email'),
+      role_id: roleId, status: statusVal,
+      student_id: fd.get('student_id') || '', year_level: fd.get('year_level') || '', section: fd.get('section') || ''
+    };
+    if (roleId === 1 && (!payload.student_id || !payload.year_level || !payload.section)) {
+      document.getElementById('userFormAlert').textContent = 'Student ID, year level and section are required for student accounts.';
+      document.getElementById('userFormAlert').classList.add('show');
+      return;
+    }
+    if (editingUserId === null) {
+      payload.password = fd.get('password');
+      if (!payload.password) { document.getElementById('userFormAlert').textContent = 'Password is required for new users.'; document.getElementById('userFormAlert').classList.add('show'); return; }
+    } else {
+      payload.user_id = editingUserId;
+      var pw = fd.get('password');
+      if (pw) payload.password = pw;
+    }
+    var btn = document.getElementById('btnUserSave');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    postAjax(editingUserId === null ? 'user_create' : 'user_update', payload)
+      .then(function(res){
+        if (res.success) { window.location.reload(); }
+        else { document.getElementById('userFormAlert').textContent = res.error || 'Request failed.'; document.getElementById('userFormAlert').classList.add('show'); }
+      })
+      .catch(function(){ document.getElementById('userFormAlert').textContent = 'Network error.'; document.getElementById('userFormAlert').classList.add('show'); })
+      .finally(function(){ btn.disabled = false; btn.textContent = editingUserId === null ? 'Create Account' : 'Save Changes'; });
+  });
+
+  function userStatusPayload(ids, status){
+    return { user_ids: ids, status: status };
+  }
+  document.getElementById('userTable').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    var tr = btn.closest('tr');
+    var id = Number(tr.getAttribute('data-id'));
+    var act = btn.getAttribute('data-act');
+    if (act === 'edit') { openEditUser(id); return; }
+    var map = { suspend:['INACTIVE','Suspend'], ban:['BANNED','Ban'], activate:['ACTIVE','Activate'] };
+    var m = map[act]; if (!m) return;
+    askConfirm(m[1] + ' user?', m[1] + ' @' + (usersById[id] ? usersById[id].username : id) + (m[0] === 'BANNED' ? ' Banned users cannot sign in.' : ''), function(done){
+      postAjax('user_status', userStatusPayload([id], m[0]))
+        .then(function(res){ res.success ? done(true) : done(false, res.error || m[1] + ' failed.'); })
+        .catch(function(){ done(false, 'Network error.'); });
+    });
+  });
+
+  /* bulk selection */
+  var bulkBar = document.getElementById('bulkBar');
+  var bulkCount = document.getElementById('bulkCount');
+  var chkAll = document.getElementById('chkAll');
+  var selected = {};
+  function refreshSelection(){
+    var n = Object.keys(selected).length;
+    bulkBar.classList.toggle('show', n > 0);
+    bulkCount.textContent = n + ' selected';
+    if (chkAll) {
+      var boxes = document.querySelectorAll('#userTable .row-check:not(:disabled)');
+      var cks = document.querySelectorAll('#userTable .row-check:not(:disabled):checked');
+      chkAll.checked = boxes.length > 0 && boxes.length === cks.length;
+    }
+  }
+  document.querySelectorAll('#userTable .row-check').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      if (cb.checked) selected[cb.value] = true; else delete selected[cb.value];
+      refreshSelection();
+    });
+  });
+  if (chkAll) chkAll.addEventListener('change', function(){
+    document.querySelectorAll('#userTable .row-check:not(:disabled)').forEach(function(cb){
+      cb.checked = chkAll.checked;
+      if (cb.checked) selected[cb.value] = true; else delete selected[cb.value];
+    });
+    refreshSelection();
+  });
+  document.getElementById('btnBulkClear').addEventListener('click', function(){
+    document.querySelectorAll('#userTable .row-check').forEach(function(cb){ cb.checked = false; });
+    selected = {}; refreshSelection();
+  });
+  document.querySelectorAll('#bulkBar .bulk-status').forEach(function(b){
+    b.addEventListener('click', function(){
+      var ids = Object.keys(selected).map(Number);
+      var status = b.getAttribute('data-bulk');
+      var label = status === 'BANNED' ? 'Ban' : (status === 'ACTIVE' ? 'Activate' : 'Suspend');
+      if (!ids.length) return;
+      askConfirm(label + ' ' + ids.length + ' user(s)?', label + ' the ' + ids.length + ' selected user(s).' + (status === 'BANNED' ? ' Banned users cannot sign in.' : ''), function(done){
+        postAjax('user_status', userStatusPayload(ids, status))
+          .then(function(res){ res.success ? done(true) : done(false, res.error || label + ' failed.'); })
+          .catch(function(){ done(false, 'Network error.'); });
+      });
+    });
+  });
+
+  /* ---------- CLASSES ---------- */
+  var classesById = {};
+  (window.CLASSES || []).forEach(function(c){ classesById[c.class_id] = c; });
+
+  document.querySelectorAll('#view-classes .cls-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      var f = chip.getAttribute('data-filter') || 'All';
+      document.querySelectorAll('#view-classes .cls-chip').forEach(function(c){ c.classList.remove('active'); });
+      chip.classList.add('active');
+      document.querySelectorAll('#classTable tbody tr').forEach(function(tr){
+        tr.style.display = (f === 'All' || tr.getAttribute('data-status') === f) ? '' : 'none';
+      });
+    });
+  });
+  var classSearch = document.getElementById('classSearch');
+  if (classSearch) classSearch.addEventListener('input', function(){
+    var q = this.value.toLowerCase().trim();
+    document.querySelectorAll('#classTable tbody tr').forEach(function(tr){
+      tr.style.display = tr.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none';
+    });
+  });
+
+  var classForm = document.getElementById('classForm');
+  var editingClassId = null;
+  document.getElementById('btnAddClass').addEventListener('click', function(){
+    editingClassId = null;
+    classForm.reset();
+    document.getElementById('cid').value = '';
+    document.getElementById('c_status').value = 'ACTIVE';
+    document.getElementById('classModalTitle').textContent = 'Add Class';
+    document.getElementById('classModalSub').textContent = 'Create a class and assign its teacher.';
+    document.getElementById('classFormAlert').classList.remove('show');
+    openMd('modal-class');
+  });
+  function openEditClass(id){
+    var c = classesById[id]; if (!c) return;
+    editingClassId = id;
+    classForm.reset();
+    document.getElementById('cid').value = c.class_id;
+    document.getElementById('c_scode').value = c.subject_code;
+    document.getElementById('c_sname').value = c.subject_name;
+    document.getElementById('c_block').value = c.block;
+    document.getElementById('c_ccode').value = c.class_code;
+    document.getElementById('c_teacher').value = String(c.teacher_id);
+    document.getElementById('c_status').value = c.status;
+    document.getElementById('classFormAlert').classList.remove('show');
+    document.getElementById('classModalTitle').textContent = 'Edit Class';
+    document.getElementById('classModalSub').textContent = c.subject_name + ' (' + c.class_code + ')';
+    openMd('modal-class');
+  }
+  document.getElementById('classForm').addEventListener('submit', function(ev){
+    ev.preventDefault();
+    document.getElementById('classFormAlert').classList.remove('show');
+    var fd = new FormData(classForm);
+    var payload = {
+      subject_code: fd.get('subject_code'), subject_name: fd.get('subject_name'),
+      block: fd.get('block'), class_code: fd.get('class_code'),
+      teacher_id: Number(fd.get('teacher_id')), status: fd.get('status')
+    };
+    if (!payload.teacher_id) { document.getElementById('classFormAlert').textContent = 'Please assign a teacher.'; document.getElementById('classFormAlert').classList.add('show'); return; }
+    if (editingClassId !== null) payload.class_id = editingClassId;
+    var btn = document.getElementById('btnClassSave');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    postAjax(editingClassId === null ? 'class_create' : 'class_update', payload)
+      .then(function(res){
+        if (res.success) { window.location.reload(); }
+        else { document.getElementById('classFormAlert').textContent = res.error || 'Request failed.'; document.getElementById('classFormAlert').classList.add('show'); }
+      })
+      .catch(function(){ document.getElementById('classFormAlert').textContent = 'Network error.'; document.getElementById('classFormAlert').classList.add('show'); })
+      .finally(function(){ btn.disabled = false; btn.textContent = 'Save Class'; });
+  });
+
+  document.getElementById('classTable').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    var tr = btn.closest('tr');
+    var id = Number(tr.getAttribute('data-id'));
+    var act = btn.getAttribute('data-act');
+    var c = classesById[id]; if (!c) return;
+    if (act === 'edit') { openEditClass(id); return; }
+    if (act === 'roster') { openRoster(id); return; }
+    var restore = c.status === 'ARCHIVED';
+    var label = restore ? 'Restore class' : 'Archive class';
+    var body = restore ? 'Un-hide this class so it can be managed again.' : 'Hide the class from teachers/students. Enrollments and exam records are preserved.';
+    askConfirm(label + '?', body, function(done){
+      postAjax('class_status', { class_id: id, status: restore ? 'ACTIVE' : 'ARCHIVED' })
+        .then(function(res){ res.success ? done(true) : done(false, res.error || 'Request failed.'); })
+        .catch(function(){ done(false, 'Network error.'); });
+    });
+  });
+
+  /* class roster modal */
+  var rosterList = document.getElementById('rosterList');
+  var rosterLoading = document.getElementById('rosterLoading');
+  var rosterSearch = document.getElementById('rosterSearch');
+  var rosterTotal = document.getElementById('rosterTotal');
+  var rosterCount = document.getElementById('rosterChecked');
+  var currentClassId = null;
+  var rosterStudents = [];
+  function renderRoster(){
+    var q = (rosterSearch.value || '').toLowerCase();
+    var checked = 0, html = '';
+    rosterStudents.forEach(function(s){
+      var hay = ((s.first_name + ' ' + s.last_name) + ' ' + s.username + ' ' + (s.student_id || '')).toLowerCase();
+      if (q && hay.indexOf(q) === -1) return;
+      html += '<label class="roster-row"><input type="checkbox" class="roster-cb" value="' + s.user_id + '"' + (s.enrolled ? ' checked' : '') + '><span style="flex:1;">' + esc(s.first_name + ' ' + s.last_name) + '</span><span class="muted">@' + esc(s.username) + ' · ' + esc(s.student_id || 'N/A') + '</span></label>';
+      if (s.enrolled) checked++;
+    });
+    rosterList.innerHTML = html || '<div style="padding:18px;color:var(--ink-soft);font-size:13px;text-align:center;">No students match.</div>';
+    rosterCount.textContent = checked;
+    rosterTotal.textContent = rosterStudents.length;
+  }
+  function openRoster(id){
+    var c = classesById[id]; if (!c) return;
+    currentClassId = id;
+    document.getElementById('rosterTitle').textContent = c.subject_code + ' · ' + c.class_code;
+    document.getElementById('rosterSub').textContent = c.subject_name + ' — ' + c.block;
+    document.getElementById('rosterAlert').classList.remove('show');
+    rosterSearch.value = '';
+    rosterList.innerHTML = '';
+    rosterLoading.classList.remove('hidden');
+    document.getElementById('btnRosterSave').disabled = true;
+    openMd('modal-roster');
+    fetch('ajax.php?action=class_roster&class_id=' + id)
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        if (!res.success) throw new Error(res.error || 'Failed to load roster.');
+        rosterStudents = res.data.students || [];
+        document.getElementById('btnRosterSave').disabled = false;
+        rosterLoading.classList.add('hidden');
+        renderRoster();
+      })
+      .catch(function(err){
+        rosterLoading.textContent = err.message || 'Failed to load roster.';
+        rosterLoading.classList.remove('hidden');
+      });
+  }
+  rosterSearch.addEventListener('input', renderRoster);
+  rosterList.addEventListener('change', renderRoster);
+  document.getElementById('btnRosterSave').addEventListener('click', function(){
+    var ids = [];
+    document.querySelectorAll('.roster-cb').forEach(function(cb){ if (cb.checked) ids.push(Number(cb.value)); });
+    var btn = this;
+    btn.disabled = true; btn.textContent = 'Saving…';
+    postAjax('class_roster_update', { class_id: currentClassId, student_ids: ids })
+      .then(function(res){
+        if (res.success) { window.location.reload(); }
+        else { document.getElementById('rosterAlert').textContent = res.error || 'Failed to save roster.'; document.getElementById('rosterAlert').classList.add('show'); btn.disabled = false; btn.textContent = 'Save Roster'; }
+      })
+      .catch(function(){ document.getElementById('rosterAlert').textContent = 'Network error.'; document.getElementById('rosterAlert').classList.add('show'); btn.disabled = false; btn.textContent = 'Save Roster'; });
+  });
+
+  /* ---------- ASSESSMENTS ---------- */
+  var examsById = {};
+  (window.EXAMS || []).forEach(function(e){ examsById[e.exam_id] = e; });
+
+  document.querySelectorAll('#view-assessments .ex-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      var f = chip.getAttribute('data-filter') || 'All';
+      document.querySelectorAll('#view-assessments .ex-chip').forEach(function(c){ c.classList.remove('active'); });
+      chip.classList.add('active');
+      document.querySelectorAll('#examTable tbody tr').forEach(function(tr){
+        tr.style.display = (f === 'All' || tr.getAttribute('data-status') === f) ? '' : 'none';
+      });
+    });
+  });
+  var examSearch = document.getElementById('examSearch');
+  if (examSearch) examSearch.addEventListener('input', function(){
+    var q = this.value.toLowerCase().trim();
+    document.querySelectorAll('#examTable tbody tr').forEach(function(tr){
+      tr.style.display = tr.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none';
+    });
+  });
+
+  function examPost(examId, action, extra, done){
+    var payload = { exam_id: examId, action: action };
+    if (extra) Object.assign(payload, extra);
+    postAjax('exam_status', payload)
+      .then(function(res){ res.success ? done(true) : done(false, res.error); })
+      .catch(function(){ done(false, 'Network error — is the backend running?'); });
+  }
+
+  document.getElementById('examTable').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    var tr = btn.closest('tr');
+    var id = Number(tr.getAttribute('data-id'));
+    var act = btn.getAttribute('data-act');
+    var ex = examsById[id]; if (!ex) return;
+    if (act === 'review') { openExamDetail(id); return; }
+    if (act === 'force_close') {
+      askConfirm('Force close exam?', 'Stops the exam immediately. Mid-exam submissions are kept; further attempts are blocked.', function(done){ examPost(id, 'force_close', null, done); });
+    } else if (act === 'archive') {
+      askConfirm('Archive exam?', 'Hides the exam from teachers/students. Submissions are preserved; you can reschedule it later.', function(done){ examPost(id, 'archive', null, done); });
+    } else if (act === 'schedule') {
+      document.getElementById('schedAlert').classList.remove('show');
+      document.getElementById('s_start').value = ex.start_time ? String(ex.start_time).replace(' ', 'T').slice(0, 16) : '';
+      document.getElementById('s_end').value = ex.end_time ? String(ex.end_time).replace(' ', 'T').slice(0, 16) : '';
+      document.getElementById('schedTitle').textContent = ex.status === 'ARCHIVED' ? 'Restore & Schedule' : (ex.status === 'DRAFT' ? 'Schedule' : 'Reopen');
+      openMd('modal-schedule');
+      document.getElementById('btnSchedGo').onclick = function(){
+        var sv = document.getElementById('s_start').value;
+        var ev = document.getElementById('s_end').value;
+        if (!sv || !ev) { document.getElementById('schedAlert').textContent = 'Please pick both a start and an end time.'; document.getElementById('schedAlert').classList.add('show'); return; }
+        var b = this; b.disabled = true;
+        examPost(id, 'schedule', { start_time: sv.replace('T', ' ') + ':00', end_time: ev.replace('T', ' ') + ':00' }, function(ok, msg){
+          if (ok) { window.location.reload(); }
+          else { document.getElementById('schedAlert').textContent = msg || 'Failed to schedule.'; document.getElementById('schedAlert').classList.add('show'); b.disabled = false; }
+        });
+      };
+    }
+  });
+
+  function openExamDetail(id){
+    document.getElementById('edAlert').classList.remove('show');
+    document.getElementById('edBody').innerHTML = '<div class="empty-state">Loading…</div>';
+    openMd('modal-exam');
+    fetch('ajax.php?action=exam_detail&exam_id=' + id)
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        if (!res.success) throw new Error(res.error || 'Failed to load.');
+        var d = res.data;
+        var exm = d.exam || {};
+        var qs = d.questions || [];
+        var subs = d.submissions || [];
+        document.getElementById('edTitle').textContent = exm.exam_name || ('Exam #' + id);
+        document.getElementById('edSub').textContent = (exm.subject_name || '') + ' · ' + (exm.subject_code || '') + ' · ' + (exm.block || '') + ' — ' + (exm.status || '');
+        var qhtml = qs.map(function(q, i){
+          return '<div class="roster-row" style="cursor:default;"><span class="qnum">#' + (q.order_num || (i + 1)) + '</span><div style="flex:1;min-width:0;"><div>' + esc(q.question_text) + '</div><div style="margin-top:4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><span class="tag tag-dim">' + esc(q.question_type || '') + '</span><span class="mono" style="font-size:11.5px;color:var(--ink-soft);">' + (q.points || 0) + ' pt</span>' + ((q.correct_answer !== null && q.correct_answer !== '' && q.correct_answer !== undefined) ? '<span style="font-size:11.5px;color:#1d8a4e;"><b>✓ ' + esc(q.correct_answer) + '</b></span>' : '') + '</div></div></div>';
+        }).join('') || '<div class="empty-state">No questions on this assessment yet.</div>';
+        var shtml = subs.length ? '<div class="table-scroll"><table><thead><tr><th>Student</th><th>Score</th><th>Result</th><th>Time</th><th>At</th></tr></thead><tbody>' + subs.map(function(s){
+          var pct = s.percentage === null || s.percentage === undefined ? '—' : Number(s.percentage).toFixed(1) + '%';
+          var cls = (s.passed === null || s.passed === undefined) ? 'tag-dim' : (s.passed ? 'tag-pass' : 'tag-fail');
+          var txt = (s.passed === null || s.passed === undefined) ? 'n/s' : (s.passed ? 'PASSED' : 'FAILED');
+          return '<tr><td><div>' + esc((s.first_name || '') + ' ' + (s.last_name || '')) + '</div><div style="font-size:11px;color:var(--ink-soft);">' + esc(s.section || '') + '</div></td><td class="mono">' + (s.score != null ? s.score : '—') + ' pts · ' + pct + '</td><td><span class="tag ' + cls + '">' + txt + '</span></td><td class="mono" style="font-size:12px;">' + fmtSecs(s.time_used_secs) + '</td><td style="font-size:11.5px;color:var(--ink-soft);">' + dstr(s.submitted_at) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="empty-state">No submissions for this assessment yet.</div>';
+        document.getElementById('edBody').innerHTML =
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;"><span class="chip">Duration <b>' + (exm.duration_minutes || 0) + ' min</b></span><span class="chip">Passing <b>' + (exm.passing_score || 0) + '%</b></span><span class="chip">Questions <b>' + (exm.question_count || 0) + '</b></span><span class="chip">Points <b>' + (exm.points_count || 0) + '</b></span></div>'
+          + '<h4 style="margin:16px 0 6px;color:var(--navy-900);">Questions (' + qs.length + ')</h4>'
+          + '<div style="max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;">' + qhtml + '</div>'
+          + '<h4 style="margin:16px 0 6px;color:var(--navy-900);">Submissions (' + subs.length + ')</h4>'
+          + '<div style="max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;">' + shtml + '</div>';
+      })
+      .catch(function(err){
+        document.getElementById('edAlert').textContent = err.message || 'Failed to load assessment.';
+        document.getElementById('edAlert').classList.add('show');
+      });
+  }
+
+  /* ---------- LOGS ---------- */
+  document.querySelectorAll('#view-logs .log-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      document.querySelectorAll('#view-logs .log-chip').forEach(function(c){ c.classList.remove('active'); });
+      chip.classList.add('active');
+      applyLogFilter();
+    });
+  });
+  var logSearch = document.getElementById('logSearch');
+  var logFrom = document.getElementById('logFrom');
+  var logTo = document.getElementById('logTo');
+  function applyLogFilter(){
+    var f = document.querySelector('#view-logs .log-chip.active');
+    var action = f ? (f.getAttribute('data-filter') || 'All') : 'All';
+    var q = (logSearch.value || '').toLowerCase().trim();
+    var from = logFrom.value, to = logTo.value;
+    document.querySelectorAll('#logTable tbody tr').forEach(function(tr){
+      var okAction = action === 'All' || tr.getAttribute('data-action') === action;
+      var okSearch = !q || tr.getAttribute('data-search').indexOf(q) !== -1;
+      var w = tr.getAttribute('data-when');
+      var okDate = (!from || w >= from) && (!to || w <= to);
+      tr.style.display = (okAction && okSearch && okDate) ? '' : 'none';
+    });
+  }
+  logSearch.addEventListener('input', applyLogFilter);
+  logFrom.addEventListener('change', applyLogFilter);
+  logTo.addEventListener('change', applyLogFilter);
+
+  /* ---------- MAINTENANCE ---------- */
+  var lastKill = null;
+  document.querySelectorAll('[data-kill]').forEach(function(b){
+    b.addEventListener('click', function(){
+      lastKill = { session_id: b.getAttribute('data-kill'), user: b.getAttribute('data-user') };
+      document.getElementById('killName').textContent = lastKill.user || '';
+      openMd('modal-kill');
+    });
+  });
+  var killForm = document.querySelector('#view-maintenance [data-kill-user-form]');
+  if (killForm) killForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var raw = [];
+    (killForm.user_ids.value.split(/[,\s]+/)).forEach(function(s){
+      var n = parseInt(s, 10);
+      if (Number.isFinite(n) && n > 0) raw.push(n);
+    });
+    if (!raw.length) { killForm.user_ids.focus(); return; }
+    lastKill = { user_ids: raw, user: 'user id(s) ' + raw.join(', ') };
+    document.getElementById('killName').textContent = lastKill.user;
+    openMd('modal-kill');
+  });
+  document.getElementById('killConfirm').addEventListener('click', function(){
+    if (!lastKill) return;
+    var b = this;
+    b.disabled = true;
+    postAjax('session_kill', lastKill)
+      .then(function(res){
+        if (res.success) { window.location.reload(); }
+        else { alert(res.error || 'Could not end session.'); b.disabled = false; closeMd('modal-kill'); }
+      })
+      .catch(function(){ alert('Network error.'); b.disabled = false; closeMd('modal-kill'); });
+  });
 
 </body>
 </html>

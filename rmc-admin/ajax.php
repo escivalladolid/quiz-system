@@ -14,11 +14,6 @@ if (!admin_logged_in()) {
     echo json_encode(['success' => false, 'error' => 'Session expired. Please log in again.', 'code' => 'UNAUTHORIZED']);
     exit;
 }
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['success' => false, 'error' => 'Method not allowed.', 'code' => 'METHOD_NOT_ALLOWED']);
-    exit;
-}
 
 // Whitelisted actions: action => [API method, API path]
 $routes = [
@@ -31,6 +26,7 @@ $routes = [
     'class_roster'        => ['GET', 'admin/class_roster.php'],
     'class_roster_update' => ['POST', 'admin/class_roster_update.php'],
     'exam_status'         => ['POST', 'admin/exam_status.php'],
+    'exam_detail'         => ['GET', 'admin/exam_detail.php'],
     'session_kill'        => ['POST', 'admin/session_kill.php'],
 ];
 
@@ -42,6 +38,12 @@ if (!isset($routes[$action])) {
 }
 
 [$method, $path] = $routes[$action];
+
+if ($_SERVER['REQUEST_METHOD'] !== $method) {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'error' => 'Method not allowed.', 'code' => 'METHOD_NOT_ALLOWED']);
+    exit;
+}
 
 if ($method === 'GET') {
     $payload = [];
