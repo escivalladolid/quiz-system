@@ -2553,6 +2553,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
       })
       .catch(function(){ alert('Network error.'); b.disabled = false; closeMd('modal-kill'); });
   });
+</script>
 
 </body>
 </html>
