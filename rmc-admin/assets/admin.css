@@ -1,7 +1,7 @@
 /* ============================================================
    RMC Quiz & Exam — Admin Web Panel
    Design system v3 (matches RMC landing + admin template)
-   Palette: navy #0A1F44 · royal #1E4FA0 · accent #1E4FA0
+   Palette: navy #0A1F44 · accent amber #E8A33D (unified with standalone dashboard)
    Type: Fraunces (headings) · Inter (UI) · IBM Plex Mono (data)
    ============================================================ */
 
@@ -10,9 +10,9 @@
   --navy-800: #0f2e6b;
   --navy-700: #1e4fa0;
   --navy-600: #4e7fd1;
-  --accent-500: #1e4fa0;
-  --accent-400: #4e7fd1;
-  --accent-100: #e3ecfa;
+  --accent-500: #e8a33d;
+  --accent-400: #f0c07a;
+  --accent-100: #fbf3df;
   --royal: #1e4fa0;
   --royal-light: #4e7fd1;
   --sky: #9fc3ee;
@@ -65,7 +65,7 @@ input { font-family: inherit; }
   justify-content: center;
   padding: 24px;
   background:
-    radial-gradient(1100px 520px at 18% -10%, rgba(30, 79, 160, 0.22) 0%, rgba(30, 79, 160, 0) 55%),
+    radial-gradient(1100px 520px at 18% -10%, rgba(232, 163, 61, 0.22) 0%, rgba(232, 163, 61, 0) 55%),
     radial-gradient(900px 560px at 105% 110%, rgba(36, 64, 110, 0.85) 0%, rgba(36, 64, 110, 0) 60%),
     linear-gradient(160deg, var(--navy-900) 0%, var(--navy-800) 62%, var(--navy-700) 100%);
 }
@@ -161,7 +161,7 @@ input { font-family: inherit; }
 
 .input:focus {
   border-color: var(--accent-500);
-  box-shadow: 0 0 0 3px rgba(30, 79, 160, 0.22);
+  box-shadow: 0 0 0 3px rgba(232, 163, 61, 0.26);
 }
 
 .btn {
@@ -209,7 +209,7 @@ input { font-family: inherit; }
 .alert-error { background: var(--error-100); color: var(--error-600); border: 1px solid #f3c1bb; }
 .alert-ok    { background: #e5f4ec; color: var(--ok-600); border: 1px solid #bfe3cf; }
 
-.alert-info  { background: var(--accent-100); color: #1e4fa0; border: 1px solid #c9d9f2; }
+.alert-info  { background: var(--accent-100); color: var(--navy-900); border: 1px solid #eed28e; }
 
 .alert .icon { flex-shrink: 0; line-height: 1.3; }
 
@@ -281,7 +281,7 @@ input { font-family: inherit; }
   border: 1px dashed var(--accent-500);
   border-radius: 8px;
   font-size: 12px;
-  color: #1e4fa0;
+  color: var(--navy-900);
   overflow-wrap: anywhere;
 }
 
@@ -649,7 +649,7 @@ html[data-theme="dark"] .panel-head h3 { color: #eef1f7; }
   width: 84px;
   height: 84px;
   border-radius: 50%;
-  background: rgba(30, 79, 160, 0.09);
+  background: rgba(232, 163, 61, 0.09);
 }
 
 .stat-label { font-size: 12px; font-weight: 600; color: var(--ink-400); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -736,7 +736,7 @@ html[data-theme="dark"] .data-table tr:hover td { background: rgba(255, 255, 255
   padding: 3px 9px;
   border-radius: 20px;
 }
-.tag-royal { background: var(--accent-100); color: #1e4fa0; }
+.tag-royal { background: var(--accent-100); color: var(--navy-900); }
 .tag-pass { background: #e5f4ec; color: var(--ok-600); }
 .tag-fail { background: var(--error-100); color: var(--error-600); }
 .tag-dim  { background: var(--bg); color: var(--ink-400); }
@@ -762,8 +762,8 @@ html[data-theme="dark"] .tag-dim { background: #26355a; color: #7f8da8; }
   font-size: 13px;
   margin-bottom: 18px;
   background: var(--accent-100);
-  border: 1px solid #c9d9f2;
-  color: #1e4fa0;
+  border: 1px solid #eed28e;
+  color: var(--navy-900);
 }
 .notice.bad { background: var(--error-100); border-color: #f3c1bb; color: var(--error-600); }
 
@@ -795,7 +795,7 @@ html[data-theme="dark"] .tag-dim { background: #26355a; color: #7f8da8; }
 .theme-opt[data-theme-option="light"] .swatch { background: linear-gradient(135deg, #ffffff 50%, #f4f6f9 50%); }
 .theme-opt[data-theme-option="dark"]  .swatch { background: linear-gradient(135deg, #0f2e6b 50%, #0a1f44 50%); }
 .theme-opt[data-theme-option="auto"]  .swatch { background: conic-gradient(from 45deg, #ffffff 0 25%, #0f2e6b 25% 50%, #ffffff 50% 75%, #0f2e6b 75% 100%); }
-.theme-opt.is-selected { border-color: var(--accent-500); box-shadow: 0 0 0 3px rgba(30, 79, 160, 0.24); color: var(--navy-800); }
+.theme-opt.is-selected { border-color: var(--accent-500); box-shadow: 0 0 0 3px rgba(232, 163, 61, 0.28); color: var(--navy-800); }
 
 html[data-theme="dark"] .theme-opt { background: var(--navy-700); border-color: #2a3a5f; color: #cdd7e8; }
 html[data-theme="dark"] .theme-opt.is-selected { color: #fff; }
@@ -898,11 +898,11 @@ html[data-theme="dark"] .list-toolbar h2 { color: #eef1f7; }
   padding: 10px 12px;
   margin-bottom: 12px;
   background: var(--accent-100);
-  border: 1px solid #c9d9f2;
+  border: 1px solid #eed28e;
   border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
-  color: #1e4fa0;
+  color: var(--navy-900);
 }
 .bulk-bar.show { display: flex; }
 .bulk-bar .btn-sm {
@@ -918,7 +918,7 @@ html[data-theme="dark"] .list-toolbar h2 { color: #eef1f7; }
 }
 .bulk-bar .btn-sm:hover { border-color: #d8ad62; }
 .bulk-bar .btn-sm.danger { color: var(--error-600); border-color: #f3c1bb; }
-.bulk-bar .clear { margin-left: auto; background: none; border: none; color: #1e4fa0; font-size: 12px; cursor: pointer; }
+.bulk-bar .clear { margin-left: auto; background: none; border: none; color: var(--navy-800); font-size: 12px; cursor: pointer; }
 
 .table-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .table-tools .muted { font-size: 12px; color: var(--ink-400); }

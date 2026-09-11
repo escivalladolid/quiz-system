@@ -50,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <style>
   :root{
     --navy-deep:#0A1F44; --navy:#0F2E6B; --royal:#1E4FA0; --royal-light:#4E7FD1;
+    --amber:#e8a33d; --amber-dim:#f0c07a;
     --sky:#9FC3EE; --paper:#F3F6FB; --ink:#0B1220;
     --danger:#C4453C;
   }
@@ -59,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     min-height:100vh;
     display:flex; align-items:center; justify-content:center;
     background:
-      radial-gradient(1100px 700px at 82% -10%, rgba(78,127,209,0.35), transparent 60%),
+      radial-gradient(1100px 700px at 82% -10%, rgba(232,163,61,0.40), transparent 60%),
       linear-gradient(160deg, var(--navy-deep) 0%, var(--navy) 55%, var(--royal) 100%);
     padding:32px;
   }
@@ -100,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     font-size:14.5px; font-family:'Inter',sans-serif; color:var(--ink);
     outline:none; transition:border-color .15s ease;
   }
-  input:focus{ border-color:var(--royal); }
+  input:focus{ border-color:var(--amber); }
   .row-between{
     display:flex; align-items:center; justify-content:space-between;
     font-size:13px; gap:10px; flex-wrap:wrap;
@@ -111,12 +112,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   .row-between label input{ width:auto; accent-color:var(--navy); }
   button.submit{
     margin-top:6px;
-    background:var(--navy-deep); color:#fff;
+    background:var(--amber); color:var(--navy-deep);
     border:none; padding:13px; border-radius:10px;
     font-size:14.5px; font-weight:700; cursor:pointer;
     transition:background .15s ease, transform .15s ease;
   }
-  button.submit:hover{ background:var(--royal); transform:translateY(-1px); }
+  button.submit:hover{ background:var(--amber-dim); transform:translateY(-1px); }
   button.submit:disabled{ opacity:.6; cursor:not-allowed; transform:none; }
   .error{
     display:none;
