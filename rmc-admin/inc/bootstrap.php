@@ -31,8 +31,15 @@ function admin_api_base(): string {
     $scriptName = $_SERVER['SCRIPT_NAME'] ?? '/Capstone-Mobile-Quiz-System/Backend-PHP/rmc-admin/login.php';
     $panelDir   = dirname($scriptName);          // .../rmc-admin
     $backendDir = dirname($panelDir);             // .../Backend-PHP
-    $scheme     = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host       = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    // Scheme detection behind a TLS-terminating proxy (Render): trust the
+    // X-Forwarded-Proto header when present, since $_SERVER['HTTPS'] is
+    // empty on Render (TLS ends at the proxy). Without this the panel would
+    // self-call over http:// and never reach the container (port 80).
+    $fwdProto  = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+    $isHTTPS   = $fwdProto === 'https'
+                 || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+    $scheme    = $isHTTPS ? 'https' : 'http';
+    $host      = $_SERVER['HTTP_HOST'] ?? 'localhost';
     return $scheme . '://' . $host . $backendDir . '/api/';
 }
 
