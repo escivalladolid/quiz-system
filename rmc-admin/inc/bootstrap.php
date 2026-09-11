@@ -95,6 +95,75 @@ function admin_logged_in(): bool {
     return isset($_SESSION['admin_user']);
 }
 
+/**
+ * Restore the admin session from the long-lived "remember this device" cookie.
+ *
+ * The panel's PHP session is file-backed, so Render's free tier wipes it on
+ * every dyno restart / sleep — that alone forces an admin to log back in
+ * "even though I never logged out." The API session token, in contrast, lives
+ * in the DB-backed `sessions` table and survives restarts. So when the PHP
+ * session is gone but the cookie still holds a valid DB token we rebuild the
+ * session from admin/me.php instead of showing the login screen.
+ */
+function admin_restore_remember(): void {
+    if (admin_logged_in()) {
+        return cheklarni;
+    }
+    $token = $_COOKIE['rmc_admin_remember'] ?? '';
+    if ($token === '') {
+        return false;
+    }
+
+    $res = admin_api_request('GET', 'admin/me.php', [], $token);
+    if (($res['http_code'] ?? 0) !== 200 || empty($res['body']['success'])) {
+        // Token was revoked/expired — drop the stale cookie instead of
+        // hammering the API on every request.
+        admin_clear_remember_cookie();
+        return false;
+    }
+
+    $data = $res['body']['data'] ?? [];
+    $_SESSION['admin_user'] = [
+        'user_id'  => (int) ($data['user_id'] ?? 0),
+        'name'     => trim(($data['first_name'] ?? '') . ' ' . ($data['last_name'] ?? '')),
+        'username' => $data['username'] ?? '',
+        'email'    => $data['email'] ?? '',
+        'token'    => $token,
+    ];
+}
+
+/** Write the "remember this device" cookie (30-day, device-scoped token). */
+function admin_set_remember_cookie(string $token): void {
+    $fwdProto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+    $secure   = $fwdProto === 'https' || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+    setcookie('rmc_admin_remember', $token, [
+        'expires'  => time() + 30 * 24 * 3600,
+        'path'     => '/',
+        'secure'   => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
+/** Expire the "remember this device" cookie (logout / invalid token). */
+function admin_clear_remember_cookie(): void {
+    setcookie('rmc_admin_remember', '', [
+        'expires'  => time() - 42000,
+        'path'     => '/',
+        'secure'   => false,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
+// One-shot restore on every protected page: rebuild the session from the
+// DB-backed token when the file-backed PHP session was wiped (Render
+// restart / dyno sleep). Bounces the user straight to the dashboard instead
+// of forcing another login.
+if (!admin_logged_in()) {
+    admin_restore_remember();
+}
+
 /** Redirect to the login page when the admin is not authenticated. */
 function admin_require_login(): void {
     if (!admin_logged_in()) {
@@ -119,4 +188,27 @@ function admin_verify_csrf(?string $token): void {
         echo json_encode(['success' => false, 'error' => 'Invalid security token. Please try again.', 'code' => 'FORBIDDEN']);
         exit;
     }
+}
+
+/** Store a one-shot flash message for display on the next page load. */
+function admin_flash_set(string $type, string $message): void {
+    $_SESSION['flash'] = ['type' => $type, 'message' => $message];
+}
+
+/**
+ * Render the flash message (if any) as an alert banner, then clear it from
+ * the session so it does not persist on refresh.
+ */
+function admin_flash_display(): void {
+    if (empty($_SESSION['flash'])) return;
+    $flash = $_SESSION['flash'];
+    unset($_SESSION['flash']);
+
+    $cls = ($flash['type'] ?? 'success') === 'success' ? 'alert-ok' : 'alert-error';
+    if ($flash['type'] === 'success') {
+        $icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+    } else {
+        $icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    }
+    echo '<div class="alert flash-banner auto-hide ' . $cls . '">' . $icon . ' ' . e($flash['message'] ?? '') . '</div>';
 }

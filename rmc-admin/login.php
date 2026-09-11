@@ -39,6 +39,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'email'   => $res['body']['data']['email'] ?? '',
                 'token'   => $res['body']['data']['session_token'] ?? '',
             ];
+
+            // "Remember this device" — persist the DB-backed API session token
+            // in a long-lived cookie. The token lives in the Postgres
+            // `sessions` table so it survives dyno restarts (which wipe the
+            // file-backed $_SESSION) and the user stops being forced to log
+            // back in on every Render restart / browser close. Cleared on
+            // explicit logout via logout.php.
+            if (!empty($_POST['remember'])) {
+                $proto = ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'
+                       || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+                setcookie('rmc_admin_remember', $_SESSION['admin_user']['token'] ?? '', [
+                    'expires'  => time() + 30 * 86400,   // 30 days
+                    'path'     => '/',
+                    'secure'   => $proto,
+                    'httponly' => true,
+                    'samesite' => 'Lax',
+                ]);
+            }
+
             header('Location: dashboard.php');
             exit;
         }
@@ -127,7 +146,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   button.submit:hover{ background:var(--amber-dim); transform:translateY(-1px); }
   button.submit:disabled{ opacity:.6; cursor:not-allowed; transform:none; }
   .error{
-    display:none;
     background:rgba(196,69,60,0.08); border:1px solid rgba(196,69,60,0.25);
     color:var(--danger); font-size:13px; font-weight:600;
     padding:10px 12px; border-radius:8px; margin-top:22px;
@@ -203,7 +221,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                placeholder="••••••••" required>
       </div>
       <div class="row-between">
-        <label><input type="checkbox" id="remember"> Remember this device</label>
+        <label><input type="checkbox" id="remember" name="remember" value="1"> Remember this device</label>
         <a href="#" id="btnForgot">Forgot password?</a>
       </div>
       <button class="submit" type="submit">Sign in to admin panel</button>
