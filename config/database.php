@@ -15,6 +15,19 @@
  * keeps both clocks identical so every date computation is consistent.
  */
 function syncPhpTimezone(PDO $pdo): void {
+    $cacheFile = sys_get_temp_dir() . '/quizsystem_tz_cache';
+    $ttlSec    = 300; // re-derive from the DB every 5 minutes
+
+    // Fast path: use the cached timezone string when it is fresh.
+    $cached = @file_get_contents($cacheFile);
+    if ($cached !== false) {
+        list($ts, $tz) = explode('|', $cached, 2);
+        if ((int) $ts + $ttlSec > time() && $tz !== '') {
+            date_default_timezone_set($tz);
+            return;
+        }
+    }
+
     try {
         $offsetSec = (int) $pdo->query('SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW())')->fetchColumn();
         if ($offsetSec % 3600 === 0) {
@@ -23,6 +36,7 @@ function syncPhpTimezone(PDO $pdo): void {
                 ? 'UTC'
                 : 'Etc/GMT' . ($hours > 0 ? '-' . $hours : '+' . abs($hours));
             date_default_timezone_set($tz);
+            @file_put_contents($cacheFile, time() . '|' . $tz);
         }
     } catch (Exception $e) {
         // Non-whole-hour offsets keep the default timezone.
