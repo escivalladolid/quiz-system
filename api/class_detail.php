@@ -45,24 +45,24 @@ if (!$classInfo) {
 // Get exams for this class
 $examStmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.duration_minutes, e.status, e.total_points,
-            s.score, s.correct_count, s.total_questions
+            s.score, s.correct_count, s.total_questions, qtp.tp
      FROM exams e
      LEFT JOIN exam_submissions s ON s.exam_id = e.exam_id AND s.user_id = :uid
+     LEFT JOIN (
+         SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id
+     ) qtp ON qtp.exam_id = e.exam_id
      WHERE e.class_id = :cid
      ORDER BY FIELD(e.status, \'LIVE\', \'SCHEDULED\', \'DRAFT\', \'CLOSED\', \'ARCHIVED\'), e.exam_name ASC'
 );
 $examStmt->execute(['uid' => $user['user_id'], 'cid' => $classId]);
 $exams = $examStmt->fetchAll();
 
-$tpStmt = $pdo->query('SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id');
-$totalPointsByExam = $tpStmt->fetchAll(PDO::FETCH_KEY_PAIR);
-
 // Normalize to the variable-point score model: score = earned points (stored),
 // max_points = SUM of the exam's question points, percentage derived.
 foreach ($exams as &$ex) {
     $examId       = (int) $ex['exam_id'];
     $earned       = $ex['score'] !== null ? (int) $ex['score'] : null;
-    $totalPts     = $ex['score'] !== null ? (int) ($totalPointsByExam[$examId] ?? 0) : null;
+    $totalPts     = $ex['score'] !== null ? (int) ($ex['tp'] ?? 0) : null;
     $ex['score']         = $earned;
     $ex['earned_points'] = $earned;
     $ex['total_points']  = $totalPts;

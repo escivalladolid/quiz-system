@@ -20,18 +20,19 @@ syncExamStatuses($pdo);
 $stmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.duration_minutes, e.status AS exam_status,
             e.total_points, e.is_closed, c.subject_code, c.subject_name, c.block,
-            s.score, s.correct_count, s.total_questions, s.submission_id, s.results_released
+            s.score, s.correct_count, s.total_questions, s.submission_id, s.results_released,
+            qtp.tp
      FROM exams e
      JOIN classes c ON c.class_id = e.class_id
      JOIN enrollments en ON en.class_id = c.class_id AND en.user_id = :uid
      LEFT JOIN exam_submissions s ON s.exam_id = e.exam_id AND s.user_id = :uid2
+     LEFT JOIN (
+         SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id
+     ) qtp ON qtp.exam_id = e.exam_id
      ORDER BY FIELD(e.status, \'LIVE\', \'SCHEDULED\', \'DRAFT\', \'CLOSED\', \'ARCHIVED\'), e.exam_name ASC'
 );
 $stmt->execute(['uid' => $user['user_id'], 'uid2' => $user['user_id']]);
 $exams = $stmt->fetchAll();
-
-$tpStmt = $pdo->query('SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id');
-$totalPointsByExam = $tpStmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
 // Normalize each exam to the variable-point score model:
 // score = earned points (stored), max_points = SUM of the exam's question
@@ -42,7 +43,7 @@ $totalPointsByExam = $tpStmt->fetchAll(PDO::FETCH_KEY_PAIR);
 foreach ($exams as &$ex) {
     $examId     = (int) $ex['exam_id'];
     $earned     = $ex['score'] !== null ? (int) $ex['score'] : null;
-    $totalPts   = $ex['score'] !== null ? (int) ($totalPointsByExam[$examId] ?? 0) : null;
+    $totalPts   = $ex['score'] !== null ? (int) ($ex['tp'] ?? 0) : null;
     $scoresVisible = ((int) $ex['is_closed'] === 1) || strtoupper((string) $ex['exam_status']) === 'CLOSED';
     $ex['has_submission'] = $ex['submission_id'] !== null;
     $ex['review_available'] = $ex['submission_id'] !== null

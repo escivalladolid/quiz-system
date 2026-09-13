@@ -19,6 +19,18 @@
  */
 
 function syncExamStatuses(PDO $pdo): void {
+    // Throttle: exam start/end transitions are edge-triggered on TIME. Running
+    // both UPDATEs on every request is wasted round trips when nothing has
+    // changed (they are no-ops ~all the time). Skip if synced within the last
+    // few seconds; a tiny transition delay is far cheaper than 2 DB calls per
+    // request and is re-attempted on the very next one.
+    $cacheFile = sys_get_temp_dir() . '/quizsystem_status_sync_at';
+    $lastSync  = (int) @file_get_contents($cacheFile);
+    if ($lastSync + 5 > time()) {
+        return;
+    }
+    @file_put_contents($cacheFile, time());
+
     // Scheduled exams become live once the start time arrives.
     $pdo->exec(
         "UPDATE exams
