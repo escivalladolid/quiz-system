@@ -228,7 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
 
     <hr class="divider">
-    <p class="foot-note">Students and teachers use the Regis Marie College mobile app. Account activation is handled by the Registrar's office.</p>
+    <p class="foot-note">Students and teachers register in the Regis Marie College mobile app using their student or employee number.</p>
   </div>
 </div>
 

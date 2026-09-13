@@ -2,8 +2,7 @@
 /**
  * Shared answer-grading + review-building helpers.
  *
- * The matching rules here MUST stay in sync with exams/submit.php so that
- * review breakdowns always agree with the stored score.
+ * Submission and review both call these functions so matching cannot drift.
  */
 
 function normalizeQuestionType(?string $raw): string {
@@ -153,4 +152,55 @@ function buildReviewQuestions(PDO $pdo, int $examId, ?string $answersJson): arra
     }
 
     return $items;
+}
+
+
+/** Grade a complete question set using the same matching rules as review. */
+function gradeExamQuestions(array $questions, array $answers, ?float $passingScore): array {
+    $earned = 0;
+    $possible = 0;
+    $correctCount = 0;
+    foreach ($questions as $question) {
+        $points = (int) ($question['points'] ?? 1);
+        $possible += $points;
+        $type = normalizeQuestionType($question['question_type'] ?? 'MC');
+        $options = $type === 'TF' ? ['True', 'False']
+            : json_decode($question['options'] ?? 'null', true);
+        $options = is_array($options) ? array_values($options) : null;
+        $answer = $answers[(string) $question['question_id']] ?? null;
+        if ($answer !== null) $answer = resolveOptionLetter($answer, $options, $type);
+        if (isAnswerCorrect($type, $answer, $question['correct_answer'], $question['answer_matching'] ?? 'EXACT')) {
+            $earned += $points;
+            $correctCount++;
+        }
+    }
+    $percentage = $possible > 0 ? round($earned / $possible * 100, 2) : 0.0;
+    return ['score' => $earned, 'earned_points' => $earned, 'total_points' => $possible,
+        'correct_count' => $correctCount, 'total_questions' => count($questions),
+        'percentage' => $percentage,
+        'passed' => $passingScore !== null ? $percentage >= $passingScore : null];
+}
+
+/**
+ * Load the student's latest auto-saved answers from the versioned
+ * exam_answer_revisions table (one row per exam/user/question; each row only
+ * ever holds the highest revision thanks to the version-gated upsert in
+ * exam_save_answer.php). Returns ['answers' => [qid => answer],
+ * 'revisions' => [qid => revision]]. Throws PDOException if the table is
+ * missing — callers decide whether to degrade or fail loudly.
+ */
+function loadStudentRevisionAnswers(PDO $pdo, int $examId, int $userId): array {
+    $stmt = $pdo->prepare(
+        'SELECT question_id, answer, revision FROM exam_answer_revisions
+         WHERE exam_id = :eid AND user_id = :uid'
+    );
+    $stmt->execute(['eid' => $examId, 'uid' => $userId]);
+    $answers = [];
+    $revisions = [];
+    while ($row = $stmt->fetch()) {
+        $qid = (string) $row['question_id'];
+        $answers[$qid] = $row['answer'];
+        $revisions[$qid] = (int) $row['revision'];
+    }
+    return ['answers' => $answers, 'revisions' => $revisions];
 }

@@ -18,6 +18,12 @@ requireFields($input, ['exam_id']);
 $examId = (int) $input['exam_id'];
 $studentId = $user['user_id'];
 
+// 'instructions' (default) only returns exam metadata and must NOT start the
+// timer. 'start' records the attempt the first time the student begins and
+// returns the SAME deadline on every later reopen of that attempt.
+$action  = strtolower((string) ($input['action'] ?? 'instructions'));
+$starting = ($action === 'start');
+
 // Sync time-based transitions so the status below is always current.
 syncExamStatuses($pdo);
 
@@ -80,21 +86,79 @@ $pointsStmt->execute(['eid' => $examId]);
 $totalPointsFromQuestions = (int) $pointsStmt->fetch()['total_pts'];
 
 // Server timestamps in server-local time (aligned to MySQL by config/database.php).
-// The app parses time_started/deadline with a device-local SimpleDateFormat, so
-// sending UTC strings here made the deadline appear ~8 hours in the past and the
-// exam instantly auto-submitted. Always send local wall-clock strings instead.
+// The *_epoch fields are absolute instants (UTC) so the app can count down
+// without any timezone guessing; the wall-clock strings are kept for legacy UI.
 $now = date('Y-m-d H:i:s');
 $durationMin = (int) $exam['duration_minutes'];
-if ($durationMin > 0) {
-    $deadline = date('Y-m-d H:i:s', strtotime($now . ' + ' . $durationMin . ' minutes'));
-} elseif (!empty($exam['end_time'])) {
-    // Unlimited exam with a server-set end time.
-    $deadline = $exam['end_time'];
-} else {
-    // Unlimited exam (stays open until manually closed): far-future sentinel so
-    // the client countdown never reaches zero and auto-submits immediately.
-    $deadline = '2099-12-31 23:59:59';
+
+// Attempt timestamps are persisted so that:
+//   - viewing the instructions screen never touches the timer, and
+//   - reopening an attempt preserves the ORIGINAL deadline instead of granting
+//     a fresh full duration.
+$attempt = null;
+if ($starting) {
+    if ($durationMin > 0) {
+        $deadline = date('Y-m-d H:i:s', strtotime($now . ' + ' . $durationMin . ' minutes'));
+        if (!empty($exam['end_time']) && strtotime($exam['end_time']) < strtotime($deadline)) {
+            // A timed attempt never extends past the exam's scheduled close.
+            $deadline = $exam['end_time'];
+        }
+    } elseif (!empty($exam['end_time'])) {
+        // Unlimited exam with a server-set end time.
+        $deadline = $exam['end_time'];
+    } else {
+        // Unlimited exam (stays open until manually closed): far-future sentinel so
+        // the client countdown never reaches zero and auto-submits immediately.
+        $deadline = '2099-12-31 23:59:59';
+    }
+
+    $hasAttemptTable = true;
+    try {
+        $pdo->query('SELECT 1 FROM exam_attempts LIMIT 1');
+    } catch (PDOException $e) {
+        $hasAttemptTable = false;
+    }
+
+    if (!$hasAttemptTable) {
+        sendError(
+            'The exam_attempts table is missing on the server. Ask your administrator to apply the migration (migration_exam_attempts.sql).',
+            'SERVER_MISCONFIGURED',
+            500
+        );
+    }
+
+    $getAttempt = $pdo->prepare(
+        'SELECT attempt_id, started_at, deadline_at FROM exam_attempts
+         WHERE exam_id = :eid AND user_id = :uid'
+    );
+    $getAttempt->execute(['eid' => $examId, 'uid' => $studentId]);
+    $attempt = $getAttempt->fetch();
+
+    if (!$attempt) {
+        try {
+            $pdo->prepare(
+                'INSERT INTO exam_attempts (exam_id, user_id, started_at, deadline_at, created_at)
+                 VALUES (:eid, :uid, :started, :deadline, NOW())'
+            )->execute([
+                'eid'      => $examId,
+                'uid'      => $studentId,
+                'started'  => $now,
+                'deadline' => $deadline,
+            ]);
+        } catch (PDOException $e) {
+            if ($e->getCode() !== '23000') throw $e;
+            // A concurrent start created the attempt (same or near-identical
+            // timestamps); read the winner's row instead of erroring.
+        }
+        $getAttempt->execute(['eid' => $examId, 'uid' => $studentId]);
+        $attempt = $getAttempt->fetch();
+    }
+    // Attempt already exists (reopen): the stored started_at/deadline_at
+    // are returned untouched below.
 }
+
+$startedAt = $attempt['started_at'] ?? null;
+$deadlineAt = $attempt['deadline_at'] ?? null;
 
 sendSuccess([
     'exam_id'               => $exam['exam_id'],
@@ -112,6 +176,9 @@ sendSuccess([
     'subject_name'          => $exam['subject_name'],
     'question_count'        => $questionCount,
     'show_results'          => ((int) $exam['is_closed'] === 1) ? 1 : 0,
-    'time_started'          => $now,
-    'deadline'              => $deadline,
+    'started'               => $starting,
+    'time_started'          => $startedAt,
+    'deadline'              => $deadlineAt,
+    'time_started_epoch'    => $startedAt ? strtotime($startedAt) : null,
+    'deadline_epoch'        => $deadlineAt ? strtotime($deadlineAt) : null,
 ]);

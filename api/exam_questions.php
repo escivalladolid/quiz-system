@@ -66,23 +66,16 @@ if ($existing && $existing['answers_json']) {
 
 // No submission yet: restore answers that were auto-saved mid-attempt so the
 // student can continue exactly where they left off after the app was closed.
+// The revisions map lets the app continue its per-question version counters
+// from the highest revision already stored on the server.
+$savedRevisions = null;
 if (!$existing) {
     try {
-        $pdo->query('SELECT 1 FROM exam_temp_answers LIMIT 1');
-        $tempStmt = $pdo->prepare(
-            'SELECT answers_json FROM exam_temp_answers
-             WHERE exam_id = :eid AND user_id = :uid'
-        );
-        $tempStmt->execute(['eid' => $examId, 'uid' => $user['user_id']]);
-        $tempRow = $tempStmt->fetch();
-        if ($tempRow && !empty($tempRow['answers_json'])) {
-            $decodedTemp = json_decode($tempRow['answers_json'], true);
-            if (is_array($decodedTemp)) {
-                $previousAnswers = $decodedTemp;
-            }
-        }
+        $loaded = loadStudentRevisionAnswers($pdo, $examId, $user['user_id']);
+        $previousAnswers = $loaded['answers'];
+        $savedRevisions = $loaded['revisions'];
     } catch (PDOException $e) {
-        // exam_temp_answers table missing; nothing to restore.
+        // exam_answer_revisions table missing; nothing to restore.
     }
 }
 
@@ -98,8 +91,8 @@ if ($examStatus !== 'LIVE' && !$existing) {
 $orderClause = $exam['randomize_questions'] ? 'ORDER BY RAND()' : 'ORDER BY order_num ASC';
 
 $qStmt = $pdo->prepare(
-    "SELECT question_id, question_text, question_type, options,
-            points, answer_matching, order_num
+    "SELECT question_id, question_text, question_type, options, option_a, option_b,
+            option_c, option_d, points, answer_matching, order_num
      FROM questions WHERE exam_id = :eid $orderClause"
 );
 $qStmt->execute(['eid' => $examId]);
@@ -117,8 +110,17 @@ foreach ($questions as &$q) {
     $jsonOptions = $q['options'] ? json_decode($q['options'], true) : null;
 
     if ($type === 'MC') {
-        // Options live in the JSON column.
-        $q['options'] = is_array($jsonOptions) ? array_values($jsonOptions) : [];
+        // If options JSON exists and is an array, use it; otherwise build from option_a/b/c/d
+        if (is_array($jsonOptions) && count($jsonOptions) > 0) {
+            $q['options'] = $jsonOptions;
+        } else {
+            $q['options'] = array_values(array_filter([
+                $q['option_a'] ?? null,
+                $q['option_b'] ?? null,
+                $q['option_c'] ?? null,
+                $q['option_d'] ?? null,
+            ]));
+        }
     } elseif ($type === 'TF') {
         // Force standard True/False options regardless of what's in the DB
         $q['options'] = ['True', 'False'];
@@ -131,6 +133,9 @@ foreach ($questions as &$q) {
             $q['expected_count'] = count($jsonOptions);
         }
     }
+
+    // Clean up old-format columns
+    unset($q['option_a'], $q['option_b'], $q['option_c'], $q['option_d']);
 
     // Attach the student's own previous answer for display when resuming.
     // Available for already-submitted exams and for in-progress attempts that
@@ -169,6 +174,7 @@ sendSuccess([
     'questions'  => $questions,
     'submitted'  => $existing ? true : false,
     'previous_answers' => $existing ? $previousAnswers : null,
+    'revisions'  => $savedRevisions,
     'score'      => $existing ? $existing['score'] : null,
     'exit_attempts' => $existing ? $existing['exit_attempts'] : null,
     'auto_submitted' => $existing ? (bool) $existing['auto_submitted'] : null,

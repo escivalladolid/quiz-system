@@ -34,13 +34,20 @@ try {
         $stmt3->execute([$class_id]);
         $exams = $stmt3->fetchAll(PDO::FETCH_ASSOC);
 
+        $tpStmt = $pdo->prepare("SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions WHERE exam_id IN (SELECT exam_id FROM exams WHERE class_id=?) GROUP BY exam_id");
+        $tpStmt->execute([$class_id]);
+        $totalPtsMap = [];
+        while ($tpRow = $tpStmt->fetch(PDO::FETCH_ASSOC)) {
+            $totalPtsMap[$tpRow['exam_id']] = (int)$tpRow['tp'];
+        }
+
         $pass_count = 0;
         $fail_count = 0;
         $total_pct_sum = 0;
         $total_pct_count = 0;
 
 foreach ($students as &$student) {
-            $stmt4 = $pdo->prepare("SELECT es.score, es.correct_count, es.total_questions FROM exam_submissions es WHERE es.user_id=? AND es.exam_id IN (SELECT exam_id FROM exams WHERE class_id=?)");
+            $stmt4 = $pdo->prepare("SELECT es.exam_id, es.score, es.correct_count, es.total_questions FROM exam_submissions es WHERE es.user_id=? AND es.exam_id IN (SELECT exam_id FROM exams WHERE class_id=?)");
             $stmt4->execute([$student['user_id'], $class_id]);
             $scores = $stmt4->fetchAll(PDO::FETCH_ASSOC);
 
@@ -49,9 +56,9 @@ foreach ($students as &$student) {
             if (!empty($scores)) {
                 $pct_sum = 0;
                 foreach ($scores as $s) {
-                    $correct = (int) ($s['correct_count'] ?? 0);
-                    $total   = (int) ($s['total_questions'] ?? 0);
-                    $pct = $total > 0 ? ($correct / $total) * 100 : 0;
+                    $earned = (int) ($s['score'] ?? 0);
+                    $tp     = $totalPtsMap[$s['exam_id']] ?? 0;
+                    $pct = $tp > 0 ? ($earned / $tp) * 100 : 0;
                     $pct_sum += $pct;
                 }
                 $student_avg = $pct_sum / count($scores);
@@ -66,8 +73,9 @@ foreach ($students as &$student) {
         $stmt5 = $pdo->prepare(
             "SELECT COUNT(*) AS pass_count FROM exam_submissions es
              JOIN exams e ON es.exam_id = e.exam_id
-             WHERE e.class_id=? AND es.total_questions > 0
-               AND (es.correct_count / es.total_questions) * 100 >= e.passing_score"
+             LEFT JOIN (SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id=es.exam_id
+             WHERE e.class_id=? AND COALESCE(qtp.tp,0) > 0
+               AND (es.score / qtp.tp) * 100 >= e.passing_score"
         );
         $stmt5->execute([$class_id]);
         $pass_count = (int)$stmt5->fetchColumn();
@@ -75,8 +83,9 @@ foreach ($students as &$student) {
         $stmt6 = $pdo->prepare(
             "SELECT COUNT(*) AS fail_count FROM exam_submissions es
              JOIN exams e ON es.exam_id = e.exam_id
-             WHERE e.class_id=? AND (es.total_questions = 0
-               OR (es.correct_count / es.total_questions) * 100 < e.passing_score)"
+             LEFT JOIN (SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id=es.exam_id
+             WHERE e.class_id=? AND (COALESCE(qtp.tp,0) = 0
+               OR (es.score / qtp.tp) * 100 < e.passing_score)"
         );
         $stmt6->execute([$class_id]);
         $fail_count = (int)$stmt6->fetchColumn();
@@ -96,6 +105,12 @@ foreach ($students as &$student) {
         $stmt->execute([$teacher_id]);
         $classes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $tpStmt = $pdo->query('SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id');
+        $totalPtsMap = [];
+        while ($tpRow = $tpStmt->fetch(PDO::FETCH_ASSOC)) {
+            $totalPtsMap[$tpRow['exam_id']] = (int)$tpRow['tp'];
+        }
+
         $result = [];
 
         foreach ($classes as $class) {
@@ -114,7 +129,7 @@ $class_avg = 0;
             $total_pct_count = 0;
 
             foreach ($students as &$student) {
-                $stmt4 = $pdo->prepare("SELECT es.exam_id, es.correct_count, es.total_questions FROM exam_submissions es WHERE es.user_id=? AND es.exam_id IN (SELECT exam_id FROM exams WHERE class_id=?)");
+                $stmt4 = $pdo->prepare("SELECT es.exam_id, es.score, es.correct_count, es.total_questions FROM exam_submissions es WHERE es.user_id=? AND es.exam_id IN (SELECT exam_id FROM exams WHERE class_id=?)");
                 $stmt4->execute([$student['user_id'], $class['class_id']]);
                 $scores = $stmt4->fetchAll(PDO::FETCH_ASSOC);
 
@@ -123,14 +138,14 @@ $class_avg = 0;
                 if (!empty($scores)) {
                     $pct_sum = 0;
                     foreach ($scores as &$s) {
-                        $correct = (int) ($s['correct_count'] ?? 0);
-                        $total   = (int) ($s['total_questions'] ?? 0);
-                        $pct = $total > 0 ? ($correct / $total) * 100 : 0;
+                        $earned = (int) ($s['score'] ?? 0);
+                        $tp     = $totalPtsMap[$s['exam_id']] ?? 0;
+                        $pct = $tp > 0 ? ($earned / $tp) * 100 : 0;
                         $pct_sum += $pct;
                         $total_pct_sum += $pct;
                         $total_pct_count++;
                         $s['percentage'] = round($pct, 2);
-                        $s['score'] = $correct;
+                        $s['total_points'] = $tp;
                     }
                     unset($s);
                     $student_avg = $pct_sum / count($scores);

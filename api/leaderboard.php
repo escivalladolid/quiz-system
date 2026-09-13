@@ -34,12 +34,14 @@ foreach ($classes as $class) {
     // Get all students in this class with their exam averages
     $lbStmt = $pdo->prepare(
         'SELECT u.user_id, u.first_name, u.last_name,
-                AVG(CASE WHEN s.total_questions > 0 THEN (s.correct_count / s.total_questions) * 100 END) AS avg_score,
+                AVG(CASE WHEN qtp.tp > 0 THEN (s.score / qtp.tp) * 100 END) AS avg_score,
                 COUNT(s.submission_id) AS exams_taken
          FROM enrollments e
          JOIN users u ON u.user_id = e.user_id
          LEFT JOIN exam_submissions s ON s.user_id = u.user_id
             AND s.exam_id IN (SELECT exam_id FROM exams WHERE class_id = :cid)
+         LEFT JOIN (SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id) qtp
+            ON qtp.exam_id = s.exam_id
          WHERE e.class_id = :cid2
          GROUP BY u.user_id, u.first_name, u.last_name
          ORDER BY avg_score DESC, exams_taken DESC'

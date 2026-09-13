@@ -39,8 +39,21 @@ try {
     }
 
     $pdo->beginTransaction();
-    $pdo->prepare("DELETE FROM exam_temp_answers WHERE exam_id=?")->execute([$exam_id]);
-    $pdo->prepare("DELETE FROM exam_submissions WHERE exam_id=?")->execute([$exam_id]);
+    // Legacy/explicit cleanup. FKs cascade for exam_attempts and
+    // exam_answer_revisions on exam deletion, but delete explicitly so no
+    // shipped migration ordering matters. Tolerate tables that a deployment
+    // simply has not migrated yet (42S02 = missing base table).
+    $legacyDelete = function (int $examId, string $table) use ($pdo) {
+        try {
+            $pdo->prepare("DELETE FROM `$table` WHERE exam_id=?")->execute([$examId]);
+        } catch (PDOException $e) {
+            if ($e->getCode() !== '42S02') throw $e;
+        }
+    };
+    $legacyDelete($exam_id, 'exam_temp_answers');
+    $legacyDelete($exam_id, 'exam_answer_revisions');
+    $legacyDelete($exam_id, 'exam_attempts');
+    $legacyDelete($exam_id, 'exam_submissions');
     $pdo->prepare("DELETE FROM questions WHERE exam_id=?")->execute([$exam_id]);
     $pdo->prepare("DELETE FROM exams WHERE exam_id=?")->execute([$exam_id]);
     $pdo->commit();

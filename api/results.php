@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
+require_once __DIR__ . '/../helpers/exam_grading.php';
 
 header('Content-Type: application/json');
 
@@ -141,7 +142,7 @@ if ($examId > 0) {
 $stmt = $pdo->prepare(
     'SELECT s.submission_id, s.exam_id, s.score, s.correct_count, s.total_questions,
             s.time_used_secs, s.submitted_at, s.results_released,
-            e.exam_name, e.total_points AS max_points,
+            e.exam_name, e.total_points AS max_points, e.passing_score,
             c.subject_code, c.subject_name
      FROM exam_submissions s
      JOIN exams e ON e.exam_id = s.exam_id
@@ -171,6 +172,9 @@ foreach ($results as $r) {
         'correct_count'    => $scoresVisible ? (int) $r['correct_count'] : null,
         'total_questions'  => (int) $r['total_questions'],
         'percentage'       => $scoresVisible ? $pct : null,
+        'passing_score'    => $r['passing_score'] !== null ? (float) $r['passing_score'] : null,
+        'passed'           => $scoresVisible && $r['passing_score'] !== null
+            ? $pct >= (float) $r['passing_score'] : null,
         'time_used_secs'   => $r['time_used_secs'] !== null ? (int) $r['time_used_secs'] : null,
         'submitted_at'     => $r['submitted_at'],
         'exam_name'        => $r['exam_name'],
@@ -184,140 +188,3 @@ foreach ($results as $r) {
 
 sendSuccess(['results' => $payload]);
 
-/**
- * Build the per-question review breakdown for a submission.
- * Returns only the data the student may see (no hidden answer fields).
- */
-function buildReviewQuestions(PDO $pdo, int $examId, ?string $answersJson): array {
-    $answers = $answersJson ? json_decode($answersJson, true) : [];
-    if (!is_array($answers)) $answers = [];
-
-    $qStmt = $pdo->prepare(
-        'SELECT question_id, question_text, question_type, options, correct_answer,
-                points, answer_matching
-         FROM questions WHERE exam_id = :eid ORDER BY order_num ASC'
-    );
-    $qStmt->execute(['eid' => $examId]);
-    $questions = $qStmt->fetchAll();
-
-    $items = [];
-    foreach ($questions as $q) {
-        $type = normalizeQuestionType($q['question_type'] ?? 'MC');
-
-        // Normalize options for display
-        $options = null;
-        if ($type === 'TF') {
-            $options = ['True', 'False'];
-        } elseif ($type === 'MC' || $type === 'ENUM') {
-            $jsonOptions = $q['options'] ? json_decode($q['options'], true) : null;
-            if (is_array($jsonOptions) && count($jsonOptions) > 0) {
-                $options = array_values($jsonOptions);
-            }
-        }
-
-        $studentAnswer = $answers[(string) $q['question_id']] ?? null;
-        if ($studentAnswer !== null) {
-            // Older/imported submissions stored the option letter ("B") instead
-            // of the option text; resolve it so display + grading stay consistent.
-            $studentAnswer = resolveOptionLetter($studentAnswer, $options, $type);
-        }
-
-        $isCorrect = null;
-        if ($studentAnswer !== null) {
-            $isCorrect = isAnswerCorrect($type, $studentAnswer, $q['correct_answer'], $q['answer_matching']);
-        }
-
-        $items[] = [
-            'question_id'    => (int) $q['question_id'],
-            'question_text'  => $q['question_text'],
-            'question_type'  => $type,
-            'options'        => $options,
-            'correct_answer' => $q['correct_answer'],
-            'student_answer' => $studentAnswer,
-            'is_correct'     => $isCorrect,
-            'points'         => (int) ($q['points'] ?? 1),
-        ];
-    }
-
-    return $items;
-}
-
-/**
- * If a student answer is a bare option letter ("B") for an MC/TF question,
- * resolve it to the matching option text. Anything else passes through.
- */
-function resolveOptionLetter($studentAns, ?array $options, string $type) {
-    if ($type !== 'MC' && $type !== 'TF') return $studentAns;
-    if (!is_array($options) || count($options) === 0) return $studentAns;
-
-    $ans = trim((string) $studentAns);
-    if ($ans === '' || strlen($ans) > 1) return $studentAns;
-
-    $letter = strtoupper($ans);
-    if ($letter < 'A' || $letter > 'Z') return $studentAns;
-
-    $idx = ord($letter) - ord('A');
-    if ($idx < 0 || $idx >= count($options)) return $studentAns;
-
-    $optText = trim((string) $options[$idx]);
-    return $optText !== '' ? $optText : $studentAns;
-}
-
-function normalizeQuestionType(?string $raw): string {
-    $type = strtoupper(trim($raw ?? ''));
-    switch ($type) {
-        case 'MULTIPLE_CHOICE': return 'MC';
-        case 'TRUE_FALSE':      return 'TF';
-        case 'IDENTIFICATION':  return 'ID';
-        case 'ENUMERATION':     return 'ENUM';
-        default:                return $type !== '' ? $type : 'MC';
-    }
-}
-
-/**
- * Same matching rules as exams/submit.php so the review matches the grade.
- */
-function isAnswerCorrect(string $type, $studentAns, ?string $correct, ?string $matching): bool {
-    if ($studentAns === null) return false;
-    $matching = $matching ?? 'EXACT';
-
-    switch ($type) {
-        case 'MC':
-        case 'TF':
-            return trim((string) $studentAns) === trim((string) $correct);
-
-        case 'ID':
-            $studentTrimmed = trim((string) $studentAns);
-            $correctTrimmed = trim((string) $correct);
-            if ($matching === 'IGNORE_CASE') {
-                return mb_strtolower($studentTrimmed) === mb_strtolower($correctTrimmed);
-            }
-            return $studentTrimmed === $correctTrimmed;
-
-        case 'ENUM':
-            $expectedLines = preg_split('/\r?\n|\|/', trim((string) $correct));
-            $expectedLines = array_map('trim', $expectedLines);
-            $expectedLines = array_filter($expectedLines, fn($l) => $l !== '');
-
-            $studentLines = preg_split('/\r?\n|,|\|/', (string) $studentAns);
-            $studentLines = array_map('trim', $studentLines);
-            $studentLines = array_filter($studentLines, fn($l) => $l !== '');
-
-            $matchedLines = 0;
-            foreach ($expectedLines as $expected) {
-                foreach ($studentLines as $sLine) {
-                    $match = ($matching === 'IGNORE_CASE')
-                        ? (mb_strtolower($sLine) === mb_strtolower($expected))
-                        : ($sLine === $expected);
-                    if ($match) {
-                        $matchedLines++;
-                        break;
-                    }
-                }
-            }
-            return count($expectedLines) > 0 && $matchedLines === count($expectedLines);
-
-        default:
-            return trim((string) $studentAns) === trim((string) $correct);
-    }
-}

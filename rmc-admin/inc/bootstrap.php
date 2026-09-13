@@ -63,7 +63,12 @@ function admin_api_request(string $method, string $path, array $payload = [], ?s
             CURLOPT_CUSTOMREQUEST  => $method,
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_TIMEOUT        => 15,
-            CURLOPT_SSL_VERIFYPEER => false, // local XAMPP has no valid cert; overridden by HTTPS origin
+            // TLS peer verification stays ON: the panel self-calls the API
+            // on the same host. Local XAMPP uses plain http (no TLS, option
+            // ignored); Render's HTTPS endpoint has a valid cert, so the
+            // system CA bundle verifies it normally.
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
         ]);
         if ($json !== null) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
