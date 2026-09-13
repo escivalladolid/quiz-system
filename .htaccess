@@ -16,3 +16,18 @@ Options -Indexes
 <Files "config/database.php">
     Require all denied
 </Files>
+
+# Clean admin URLs. Relative substitutions preserve local installation prefixes.
+RewriteEngine On
+# Redirect only direct GET/HEAD page requests, never login form POST bodies.
+RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
+RewriteCond %{THE_REQUEST} \s/+[^?\ ]*(?:rmc-admin|admin)/(?:login|dashboard)\.php(?:[?\ ]|$) [NC]
+RewriteCond %{REQUEST_URI} ^(/(?:[^/]+/)*)(?:rmc-admin|admin)/(?:login|dashboard)\.php$
+RewriteRule ^(?:rmc-admin|admin)/(login|dashboard)\.php$ %1admin/$1 [R=302,L]
+RewriteCond %{REQUEST_URI} ^(/(?:[^/]+/)*)admin/?$
+RewriteRule ^admin/?$ %1admin/login [R=302,L]
+RewriteCond %{REQUEST_URI} ^(/(?:[^/]+/)*)admin/(?:login|dashboard|logout)/$
+RewriteRule ^admin/(login|dashboard|logout)/$ %1admin/$1 [R=308,L]
+RewriteRule ^admin/(login|dashboard|logout|ajax)(?:\.php)?$ rmc-admin/$1.php [END]
+# Only public static assets are aliased; PHP includes remain outside these routes.
+RewriteRule ^admin/assets/([a-zA-Z0-9_/-]+\.(?:css|js|jpg|jpeg|png|svg|ico|webp|woff2?))$ rmc-admin/assets/$1 [END]

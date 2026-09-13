@@ -16,7 +16,7 @@ $user_thread = trim(($admin['first_name'] ?? '') . ' ' . ($admin['last_name'] ??
 $initials = strtoupper(($admin['first_name'][0] ?? 'A') . ($admin['last_name'][0] ?? 'D'));
 
 $nav_items = [
-    ['key' => 'dashboard',    'href' => 'dashboard.php',   'label' => 'Dashboard',          'soon' => null, 'icon' => '<rect x="2.7" y="2.9" width="4.3" height="5.4" rx="1.1"/><rect x="9" y="2.9" width="4.3" height="2.6" rx="1.1"/><rect x="9" y="7.5" width="4.3" height="5.6" rx="1.1"/><rect x="2.7" y="10.3" width="4.3" height="2.9" rx="1.1"/>'],
+    ['key' => 'dashboard',    'href' => admin_url('dashboard'),   'label' => 'Dashboard',          'soon' => null, 'icon' => '<rect x="2.7" y="2.9" width="4.3" height="5.4" rx="1.1"/><rect x="9" y="2.9" width="4.3" height="2.6" rx="1.1"/><rect x="9" y="7.5" width="4.3" height="5.6" rx="1.1"/><rect x="2.7" y="10.3" width="4.3" height="2.9" rx="1.1"/>'],
     ['key' => 'users',        'href' => 'users.php',        'label' => 'User Management',    'soon' => null, 'icon' => '<circle cx="6" cy="6.2" r="2.2"/><path d="M2.8 13.2c0-1.9 1.4-3 3.2-3s3.2 1.1 3.2 3"/><path d="M10.6 3.9a2.2 2.2 0 1 1 0 4.3"/><path d="M12 10.4c1.7.3 3.2 1.4 3.2 3.2"/>'],
     ['key' => 'classes',      'href' => 'classes.php',      'label' => 'Class Management',   'soon' => null, 'icon' => '<path d="M2.5 9.3 8 4.3l5.5 5"/><path d="M4.5 8.6V13h7V8.6"/><path d="M6.5 13v-2.6h3V13"/>'],
     ['key' => 'assessments',  'href' => 'assessments.php', 'label' => 'Assessment Oversight','soon' => null, 'icon' => '<rect x="4" y="2.5" width="8" height="11" rx="1.4"/><path d="M6.5 5.8h3"/><path d="M6.5 8.3h3"/><path d="M6.5 10.8h1.8"/><path d="M9.3 14.2 10.4 15.5 13 12.6"/>'],
@@ -80,7 +80,7 @@ try {
         <b><?php echo e($user_thread); ?></b>
         <span>Administrator</span>
       </div>
-      <a class="logout-link" href="logout.php" title="Log out">
+      <a class="logout-link" href="<?= e(admin_url('logout')) ?>" title="Log out">
         <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 8h7.6"/><path d="M8.4 4.8 11.6 8 8.4 11.2"/><path d="M6 2.6H2.8v10.8H6"/></svg>
       </a>
     </div>
@@ -115,7 +115,7 @@ try {
             <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="2.8" y="3" width="10.4" height="10" rx="1.6"/><path d="m2.8 6 5.2 3.4L13.2 6"/></svg>
             Inbox &amp; help
           </a>
-          <a class="dropdown-item danger" href="logout.php">
+          <a class="dropdown-item danger" href="<?= e(admin_url('logout')) ?>">
             <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.8 8h7.6"/><path d="M8.4 4.8 11.6 8 8.4 11.2"/><path d="M6 2.6H2.8v10.8H6"/></svg>
             Log out
           </a>

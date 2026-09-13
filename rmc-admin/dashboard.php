@@ -837,7 +837,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -937,7 +937,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1105,7 +1105,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1211,7 +1211,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1331,7 +1331,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1418,7 +1418,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1586,7 +1586,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -2040,7 +2040,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     }
     var btn = ev.target.querySelector('[type="submit"]');
     btn.disabled = true; btn.textContent = 'Creating…';
-    fetch('ajax.php?action=user_create', {
+    fetch('ajax?action=user_create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -2072,7 +2072,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
   });
 
   function postAjax(action, payload){
-    return fetch('ajax.php?action=' + action, {
+    return fetch('ajax?action=' + action, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -2477,7 +2477,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     rosterLoading.classList.remove('hidden');
     document.getElementById('btnRosterSave').disabled = true;
     openMd('modal-roster');
-    fetch('ajax.php?action=class_roster&class_id=' + id)
+    fetch('ajax?action=class_roster&class_id=' + id)
       .then(function(r){ return r.json(); })
       .then(function(res){
         if (!res.success) throw new Error(res.error || 'Failed to load roster.');
@@ -2571,7 +2571,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     document.getElementById('edAlert').classList.remove('show');
     document.getElementById('edBody').innerHTML = '<div class="empty-state">Loading…</div>';
     openMd('modal-exam');
-    fetch('ajax.php?action=exam_detail&exam_id=' + id)
+    fetch('ajax?action=exam_detail&exam_id=' + id)
       .then(function(r){ return r.json(); })
       .then(function(res){
         if (!res.success) throw new Error(res.error || 'Failed to load.');

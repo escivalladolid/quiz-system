@@ -4,7 +4,7 @@ require_once __DIR__ . '/inc/bootstrap.php';
 // Already signed in? Bounce straight to the dashboard instead of rendering
 // the login form again (mirror of dashboard.php's admin_require_login(), inverted).
 if (admin_logged_in()) {
-    header('Location: dashboard.php');
+    header('Location: ' . admin_url('dashboard'));
     exit;
 }
 
@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
             }
 
-            header('Location: dashboard.php');
+            header('Location: ' . admin_url('dashboard'));
             exit;
         }
     }
@@ -208,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="error" id="errorBox"<?php if ($error === null) echo ' style="display:none;"'; ?>><?php echo e($error ?? 'Incorrect username or password. Please try again.'); ?></div>
 
-    <form method="post" action="login.php" novalidate>
+    <form method="post" action="<?= e(admin_url('login')) ?>" novalidate>
       <input type="hidden" name="csrf_token" value="<?php echo e(admin_csrf_token()); ?>">
       <div class="field">
         <label for="username">Username</label>
