@@ -56,6 +56,7 @@ function getDbConnection(): PDO {
     $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_PERSISTENT => true,
     ];
 
     // Aiven (and most managed MySQL) require TLS. When DB_SSL_CA_B64 holds
