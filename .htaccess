@@ -19,15 +19,20 @@ Options -Indexes
 
 # Clean admin URLs. Relative substitutions preserve local installation prefixes.
 RewriteEngine On
+# Render terminates TLS before Apache; never expose its internal port in redirects.
+RewriteRule ^ - [E=ADMIN_PUBLIC_ORIGIN:http://%{HTTP_HOST}]
+RewriteCond %{HTTPS} =on [OR]
+RewriteCond %{HTTP:X-Forwarded-Proto} ^https$ [NC]
+RewriteRule ^ - [E=ADMIN_PUBLIC_ORIGIN:https://%{HTTP_HOST}]
 # Redirect only direct GET/HEAD page requests, never login form POST bodies.
 RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
 RewriteCond %{THE_REQUEST} \s/+[^?\ ]*(?:rmc-admin|admin)/(?:login|dashboard)\.php(?:[?\ ]|$) [NC]
 RewriteCond %{REQUEST_URI} ^(/(?:[^/]+/)*)(?:rmc-admin|admin)/(?:login|dashboard)\.php$
-RewriteRule ^(?:rmc-admin|admin)/(login|dashboard)\.php$ %1admin/$1 [R=302,L]
+RewriteRule ^(?:rmc-admin|admin)/(login|dashboard)\.php$ %{ENV:ADMIN_PUBLIC_ORIGIN}%1admin/$1 [R=302,L]
 RewriteCond %{REQUEST_URI} ^(/(?:[^/]+/)*)admin/?$
-RewriteRule ^admin/?$ %1admin/login [R=302,L]
+RewriteRule ^admin/?$ %{ENV:ADMIN_PUBLIC_ORIGIN}%1admin/login [R=302,L]
 RewriteCond %{REQUEST_URI} ^(/(?:[^/]+/)*)admin/(?:login|dashboard|logout)/$
-RewriteRule ^admin/(login|dashboard|logout)/$ %1admin/$1 [R=308,L]
+RewriteRule ^admin/(login|dashboard|logout)/$ %{ENV:ADMIN_PUBLIC_ORIGIN}%1admin/$1 [R=308,L]
 RewriteRule ^admin/(login|dashboard|logout|ajax)(?:\.php)?$ rmc-admin/$1.php [END]
 # Only public static assets are aliased; PHP includes remain outside these routes.
 RewriteRule ^admin/assets/([a-zA-Z0-9_/-]+\.(?:css|js|jpg|jpeg|png|svg|ico|webp|woff2?))$ rmc-admin/assets/$1 [END]
