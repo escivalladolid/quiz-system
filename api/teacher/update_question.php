@@ -51,8 +51,24 @@ try {
         $params[] = $input['points'];
     }
     if (isset($input['answer_matching'])) {
+        if (!in_array($input['answer_matching'], ['EXACT', 'IGNORE_CASE'], true)) {
+            sendError('Invalid answer matching mode.', 'BAD_REQUEST', 400);
+        }
         $updates[] = 'answer_matching=?';
         $params[] = $input['answer_matching'];
+    }
+    if (isset($input['answer_rules'])) {
+        if (is_array($input['answer_rules'])) {
+            $rules = json_encode($input['answer_rules']);
+        } else {
+            $decoded = json_decode((string)$input['answer_rules'], true);
+            $rules = is_array($decoded) ? json_encode($decoded) : false;
+        }
+        if ($rules === false || strlen($rules) > 4000) {
+            sendError('Invalid answer rules.', 'BAD_REQUEST', 400);
+        }
+        $updates[] = 'answer_rules=?';
+        $params[] = $rules;
     }
     if (isset($input['option_a'])) {
         $updates[] = 'option_a=?';
@@ -85,6 +101,5 @@ try {
 
     sendSuccess(['message' => 'Question updated successfully']);
 } catch (PDOException $e) {
-    error_log('QuizSystem DB Error: ' . $e->getMessage());
-    sendError('An unexpected error occurred. Please try again.', 'DB_ERROR', 500);
+    sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);
 }

@@ -132,7 +132,7 @@ if ($deadlineAt && $deadlineAt !== '2099-12-31 23:59:59' && strtotime($deadlineA
 // Fetch all questions for this exam
 $qStmt = $pdo->prepare(
     'SELECT question_id, question_text, question_type, options, correct_answer,
-            points, answer_matching
+            points, answer_matching, answer_rules
      FROM questions WHERE exam_id = :eid'
 );
 $qStmt->execute(['eid' => $examId]);

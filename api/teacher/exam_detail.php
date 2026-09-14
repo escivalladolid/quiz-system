@@ -40,7 +40,10 @@ try {
     $questions = $stmt2->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($questions as &$q) {
-        $q['question_type'] = questionTypeForStorage($q['question_type'] ?? '');
+        $q['question_type'] = normalizeQuestionType($q['question_type'] ?? '');
+        $q['answer_rules'] = answerRules($q['answer_rules'] ?? null);
+        $q['needs_review'] = (bool)($q['answer_rules']['review_required'] ?? false);
+        $q['review_reason'] = $q['answer_rules']['review_reason'] ?? null;
         if ($q['options']) {
             $q['options'] = json_decode($q['options'], true);
         }
@@ -52,6 +55,5 @@ try {
         'questions' => $questions
     ]);
 } catch (PDOException $e) {
-    error_log('QuizSystem DB Error: ' . $e->getMessage());
-    sendError('An unexpected error occurred. Please try again.', 'DB_ERROR', 500);
+    sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);
 }
