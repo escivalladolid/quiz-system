@@ -1,5 +1,5 @@
 # ============================================================
-# .htaccess â€” Capstone Mobile Quiz System (Render/Apache)
+# .htaccess — Capstone Mobile Quiz System (Render/Apache)
 #
 # NOTE: The sensitive backend folders (config/, helpers/,
 # database/) are protected at the Apache vhost level in
@@ -35,6 +35,7 @@ RewriteRule ^admin/?$ %{ENV:ADMIN_PUBLIC_ORIGIN}%1admin/login [R=302,L]
 RewriteCond %{REQUEST_URI} ^(/(?:[^/]+/)*)admin/(?:login|dashboard|logout)/$
 RewriteRule ^admin/(login|dashboard|logout)/$ %{ENV:ADMIN_PUBLIC_ORIGIN}%1admin/$1 [R=308,L]
 RewriteRule ^admin/(login|dashboard|logout|ajax)(?:\.php)?$ rmc-admin/$1.php [END]
+RewriteRule ^admin/(users|classes|assessments|reports|logs|maintenance|exam_detail)(?:\.php)?/?$ rmc-admin/$1.php [END]
 # Catch-all: any other admin/*.php page (users, classes, assessments, reports, logs, maintenance, exam_detail).
 RewriteRule ^admin/(.+\.php)$ rmc-admin/$1 [END]
 # Only public static assets are aliased; PHP includes remain outside these routes.
