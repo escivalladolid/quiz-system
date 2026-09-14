@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Persistent admin shell header.
  * Screen pages set $page_title and $active_nav, then require this file.
