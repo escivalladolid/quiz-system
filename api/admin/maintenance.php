@@ -17,10 +17,20 @@ try {
     $tzOffsetSec = (int) $pdo->query('SELECT TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW())')->fetchColumn();
 
     $tables = ['users', 'classes', 'enrollments', 'exams', 'questions',
-               'exam_submissions', 'exam_temp_answers', 'sessions', 'activity_logs', 'password_resets'];
+               'exam_submissions', 'exam_temp_answers', 'exam_live_presence',
+               'exam_activity_log', 'sessions', 'activity_logs', 'password_resets'];
     $counts = [];
     foreach ($tables as $t) {
-        $counts[$t] = (int) $pdo->query("SELECT COUNT(*) FROM `$t`")->fetchColumn();
+        try {
+            $counts[$t] = (int) $pdo->query("SELECT COUNT(*) FROM `$t`")->fetchColumn();
+        } catch (PDOException $e) {
+            if (in_array($t, ['exam_live_presence', 'exam_activity_log'], true)
+                    && $e->getCode() === '42S02') {
+                $counts[$t] = null;
+                continue;
+            }
+            throw $e;
+        }
     }
 
     $sessions = $pdo->query(

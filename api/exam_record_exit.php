@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/../helpers/exam_status.php';
+require_once __DIR__ . '/../helpers/exam_monitoring.php';
 
 header('Content-Type: application/json');
 
@@ -57,6 +58,10 @@ try {
     );
     $insert->execute(['eid' => $examId, 'uid' => $studentId, 'evt' => 'TAB_SWITCH']);
 
+    // Keep the legacy proctoring row for audit compatibility and also update
+    // the live presence/event stream when its optional migration is present.
+    recordExamActivity($pdo, $examId, $studentId, 'TAB_SWITCH');
+
     $countStmt = $pdo->prepare(
         'SELECT COUNT(*) AS cnt FROM exam_proctoring_log WHERE exam_id = :eid AND user_id = :uid'
     );
@@ -68,6 +73,5 @@ try {
         'max_exit_attempts' => $exam['max_exit_attempts'] !== null ? (int) $exam['max_exit_attempts'] : null,
     ]);
 } catch (PDOException $e) {
-    error_log('QuizSystem DB Error: ' . $e->getMessage());
-    sendError('An unexpected error occurred. Please try again.', 'DB_ERROR', 500);
+    sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);
 }

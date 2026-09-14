@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_status.php';
 require_once __DIR__ . '/../../helpers/exam_grading.php';
+require_once __DIR__ . '/../../helpers/exam_monitoring.php';
 
 header('Content-Type: application/json');
 
@@ -203,6 +204,19 @@ try {
     $receipt['already_submitted'] = !$inserted;
 
     $pdo->commit();
+    $answeredCount = 0;
+    foreach ($answers as $answerValue) {
+        if (is_array($answerValue)) {
+            if (!empty($answerValue)) $answeredCount++;
+        } elseif (trim((string) $answerValue) !== '') {
+            $answeredCount++;
+        }
+    }
+    recordExamActivity($pdo, $examId, (int) $user['user_id'], 'SUBMITTED', [
+        'answered_count' => $answeredCount,
+        'total_questions' => $totalQuestions,
+        'network_state' => 'ONLINE',
+    ]);
     sendSuccess($receipt);
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
