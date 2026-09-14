@@ -53,6 +53,9 @@ try {
     $legacyDelete($exam_id, 'exam_temp_answers');
     $legacyDelete($exam_id, 'exam_answer_revisions');
     $legacyDelete($exam_id, 'exam_attempts');
+    $legacyDelete($exam_id, 'exam_activity_log');
+    $legacyDelete($exam_id, 'exam_live_presence');
+    $legacyDelete($exam_id, 'exam_proctoring_log');
     $legacyDelete($exam_id, 'exam_submissions');
     $pdo->prepare("DELETE FROM questions WHERE exam_id=?")->execute([$exam_id]);
     $pdo->prepare("DELETE FROM exams WHERE exam_id=?")->execute([$exam_id]);

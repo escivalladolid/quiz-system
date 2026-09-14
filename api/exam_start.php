@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/../helpers/exam_status.php';
+require_once __DIR__ . '/../helpers/exam_monitoring.php';
 
 header('Content-Type: application/json');
 
@@ -159,6 +160,13 @@ if ($starting) {
 
 $startedAt = $attempt['started_at'] ?? null;
 $deadlineAt = $attempt['deadline_at'] ?? null;
+
+if ($starting && $attempt) {
+    recordExamActivity($pdo, $examId, $studentId, 'EXAM_STARTED', [
+        'total_questions' => $questionCount,
+        'network_state' => 'ONLINE',
+    ]);
+}
 
 sendSuccess([
     'exam_id'               => $exam['exam_id'],
