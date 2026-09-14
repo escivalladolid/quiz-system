@@ -59,6 +59,7 @@ if ($method === 'GET') {
     if (!is_array($payload)) {
         $payload = [];
     }
+    admin_verify_csrf($_SERVER['HTTP_X_CSRF_TOKEN'] ?? null);
 }
 
 $res = admin_api_request($method, $path, $payload, $_SESSION['admin_user']['token'] ?? null);

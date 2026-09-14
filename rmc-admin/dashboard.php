@@ -1942,6 +1942,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
   var RMC_ADMIN = <?php echo json_encode([
       'name' => $adminShort,
       'selfId' => (int) ($admin['user_id'] ?? 0),
+      'csrf' => admin_csrf_token(),
   ]); ?>;
   window.USERS   = <?php echo json_encode($users); ?>;
   window.CLASSES = <?php echo json_encode($classesAll); ?>;
@@ -2042,7 +2043,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     btn.disabled = true; btn.textContent = 'Creating…';
     fetch('ajax?action=user_create', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': RMC_ADMIN.csrf },
       body: JSON.stringify(payload)
     })
       .then(function (r) { return r.json(); })
@@ -2074,7 +2075,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
   function postAjax(action, payload){
     return fetch('ajax?action=' + action, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': RMC_ADMIN.csrf },
       body: JSON.stringify(payload)
     }).then(function(r){ return r.json(); });
   }

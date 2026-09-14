@@ -167,10 +167,13 @@ function admin_set_remember_cookie(string $token): void {
 
 /** Expire the "remember this device" cookie (logout / invalid token). */
 function admin_clear_remember_cookie(): void {
+    $fwdProto = strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+    $secure = $fwdProto === 'https'
+        || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
     setcookie('rmc_admin_remember', '', [
         'expires'  => time() - 42000,
         'path'     => '/',
-        'secure'   => $admin_secure_request,
+        'secure'   => $secure,
         'httponly' => true,
         'samesite' => 'Lax',
     ]);

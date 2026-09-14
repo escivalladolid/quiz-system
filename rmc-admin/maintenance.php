@@ -194,7 +194,7 @@ require_once __DIR__ . '/inc/header.php';
     b.disabled = true;
     fetch('ajax.php?action=session_kill', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.RMC_CSRF },
       body: JSON.stringify(body)
     })
     .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })

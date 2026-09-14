@@ -47,15 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // back in on every Render restart / browser close. Cleared on
             // explicit logout via logout.php.
             if (!empty($_POST['remember'])) {
-                $proto = ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'
-                       || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
-                setcookie('rmc_admin_remember', $_SESSION['admin_user']['token'] ?? '', [
-                    'expires'  => time() + 30 * 86400,   // 30 days
-                    'path'     => '/',
-                    'secure'   => $proto,
-                    'httponly' => true,
-                    'samesite' => 'Lax',
-                ]);
+                admin_set_remember_cookie((string) ($_SESSION['admin_user']['token'] ?? ''));
             }
 
             header('Location: ' . admin_url('dashboard'));

@@ -184,7 +184,7 @@ require_once __DIR__ . '/inc/header.php';
     function postStatus(action, extra, done) {
       var payload = { exam_id: EXAM, action: action };
       if (extra) Object.assign(payload, extra);
-      fetch(A('exam_status'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      fetch(A('exam_status'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.RMC_CSRF }, body: JSON.stringify(payload) })
         .then(function (r) { return r.json(); })
         .then(function (res) { res.success ? done(true) : done(false, res.error); })
         .catch(function () { done(false, 'Network error — is the backend running?'); });

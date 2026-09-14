@@ -286,7 +286,7 @@ window.TEACHERS = <?php echo json_encode($teachers); ?>;
   function post(action, payload, done) {
     return fetch(A(action), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.RMC_CSRF },
       body: JSON.stringify(payload)
     })
       .then(function (r) { return r.json(); })

@@ -328,7 +328,7 @@ window.USERS = <?php echo json_encode($users); ?>;
     return function (done) {
       fetch(A('user_status'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.RMC_CSRF },
         body: JSON.stringify({ user_ids: ids, status: status })
       })
         .then(function (r) { return r.json(); })
@@ -460,7 +460,7 @@ window.USERS = <?php echo json_encode($users); ?>;
     var btn = document.getElementById('btnUserSave');
     btn.disabled = true; btn.textContent = 'Saving…';
 
-    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.RMC_CSRF }, body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.success) { window.location.reload(); }

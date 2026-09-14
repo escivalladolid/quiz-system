@@ -232,14 +232,14 @@ require_once __DIR__ . '/inc/header.php';
       var act = btn.getAttribute('data-act');
       if (act === 'force_close') {
         askConfirm('Force close exam?', 'Stops the exam immediately. Students mid-exam will have their submission kept; further attempts are blocked.', function (done) {
-          fetch(A('exam_status'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exam_id: id, action: 'force_close' }) })
+          fetch(A('exam_status'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.RMC_CSRF }, body: JSON.stringify({ exam_id: id, action: 'force_close' }) })
             .then(function (r) { return r.json(); })
             .then(function (res) { res.success ? done(true) : done(false, res.error); })
             .catch(function () { done(false, 'Network error — is the backend running?'); });
         });
       } else if (act === 'archive') {
         askConfirm('Archive exam?', 'Hides the exam from teachers/students. Submissions are preserved; you can reschedule it later.', function (done) {
-          fetch(A('exam_status'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exam_id: id, action: 'archive' }) })
+          fetch(A('exam_status'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.RMC_CSRF }, body: JSON.stringify({ exam_id: id, action: 'archive' }) })
             .then(function (r) { return r.json(); })
             .then(function (res) { res.success ? done(true) : done(false, res.error); })
             .catch(function () { done(false, 'Network error — is the backend running?'); });
