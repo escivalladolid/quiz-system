@@ -45,7 +45,7 @@ try {
 
         if ($lrn === '' || $full === '') {
             $skipped++;
-            $errors[] = 'Row ' . ($i + 1) . ': missing lrn or full_name';
+            $errors[] = 'Row ' . ($i + 1) . ': missing Student No. or full_name';
             continue;
         }
 
@@ -60,7 +60,7 @@ try {
             }
         } catch (PDOException $e) {
             $skipped++;
-            $errors[] = 'Row ' . ($i + 1) . ' (LRN ' . $lrn . '): ' . $e->getMessage();
+            $errors[] = 'Row ' . ($i + 1) . ' (Student No. ' . $lrn . '): ' . $e->getMessage();
         }
     }
 

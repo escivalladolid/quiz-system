@@ -1065,7 +1065,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="form-row" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;">
               <div class="field" style="flex:1;min-width:220px;margin:0;">
-                <label>Student roster (.csv) &mdash; columns: <span class="mono">lrn, full_name, program</span></label>
+                <label>Student roster (.csv) &mdash; columns: <span class="mono">student_no, full_name, program</span></label>
                 <input class="input" type="file" id="studentRosterFile" accept=".csv,text/csv">
               </div>
               <button class="btn btn-amber" type="button" id="btnImportStudents">Import student roster</button>
@@ -1758,7 +1758,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
         <input type="password" name="password" required minlength="8">
       </div>
       <div class="form-row" id="rowStudentId">
-        <label>Student ID / LRN</label>
+        <label>Student No.</label>
         <input type="text" name="student_id">
       </div>
       <div class="form-row" id="rowYearLevel">
@@ -2281,7 +2281,9 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     reader.onload = function(){
       try {
         var rows = parseCSVRows(String(reader.result), cols);
-        if (rows.length && cols.indexOf((rows[0][cols[0]] || '').toLowerCase()) !== -1) rows.shift();
+        var header = rows.length ? (rows[0][cols[0]] || '').toLowerCase() : '';
+        if (rows.length && (cols.indexOf(header) !== -1 ||
+            (action === 'roster_import_student' && header === 'student_no'))) rows.shift();
         if (!rows.length) { showRosterAlert('No data rows found in ' + f.name + '.'); return; }
         rosterSummaryEl.textContent = '';
         showRosterAlert('Importing ' + rows.length + ' row(s)…');
