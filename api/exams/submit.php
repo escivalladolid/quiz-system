@@ -25,29 +25,36 @@ $autoSubmitted = !empty($input['auto_submitted']) ? 1 : 0;
 // Sync time-based transitions so the status below is always current.
 syncExamStatuses($pdo);
 
-// The client keeps its live answers in memory and also auto-saves each one to
-// exam_temp_answers (exam_save_answer.php). A fast submit can carry an
-// incomplete in-memory map (e.g. radio selections made moments before
-// submitting), dropping answers. Merge the server-side auto-saved answers as
-// the authoritative complement so no answered question is ever lost from
-// grading: for any question the client did NOT send, use the auto-saved value.
-$mergeStmt = $pdo->prepare(
-    'SELECT answers_json FROM exam_temp_answers
-     WHERE exam_id = :eid AND user_id = :uid'
-);
-$mergeStmt->execute(['eid' => $examId, 'uid' => $user['user_id']]);
-$tempRow = $mergeStmt->fetch();
-if ($tempRow && !empty($tempRow['answers_json'])) {
-    $tempSaved = json_decode($tempRow['answers_json'], true);
-    if (is_array($tempSaved)) {
-        foreach ($tempSaved as $qid => $value) {
-            $qid = (string) $qid;
-            if (!array_key_exists($qid, $answers) && $value !== null && $value !== '') {
-                $answers[$qid] = $value;
-            }
-        }
-    }
-}
+// Build the idempotent receipt for an existing submission row. score is stored
+// as earned points (variable-point scoring); percentage is derived from the
+// SUM of question points, never exams.total_points.
+$buildReceipt = function (PDO $pdo, array $sub, ?float $passingScore): array {
+    $totalPtsStmt = $pdo->prepare(
+        'SELECT COALESCE(SUM(points), 0) AS total_points FROM questions WHERE exam_id = :eid'
+    );
+    $totalPtsStmt->execute(['eid' => (int) $sub['exam_id']]);
+    $totalPoints = (int) $totalPtsStmt->fetchColumn();
+
+    $earned = (int) $sub['score'];
+    $pct    = $totalPoints > 0 ? round(($earned / $totalPoints) * 100, 2) : 0.0;
+    $passed = ($passingScore !== null) ? ($pct >= $passingScore) : null;
+
+    return [
+        'submission_id'     => (int) $sub['submission_id'],
+        'score'             => $earned,
+        'earned_points'     => $earned,
+        'total_points'      => $totalPoints,
+        'correct_count'     => (int) $sub['correct_count'],
+        'total_questions'   => (int) $sub['total_questions'],
+        'percentage'        => $pct,
+        'passing_score'     => $passingScore,
+        'passed'            => $passed,
+        'time_used_secs'    => $sub['time_used_secs'] !== null ? (int) $sub['time_used_secs'] : null,
+        'exit_attempts'     => (int) $sub['exit_attempts'],
+        'auto_submitted'    => (bool) $sub['auto_submitted'],
+        'submitted_at'      => $sub['submitted_at'],
+    ];
+};
 
 // Get exam
 $examStmt = $pdo->prepare(
@@ -60,38 +67,22 @@ $exam = $examStmt->fetch();
 if (!$exam) {
     sendError('Exam not found.', 'NOT_FOUND', 404);
 }
+$passingScore = $exam['passing_score'] !== null ? (float) $exam['passing_score'] : null;
 
 // If the student has already submitted, this is a resume/resubmit attempt.
 // Return the existing result idempotently instead of erroring, so the app
 // never shows "submit failed" for an already-submitted exam.
 $subCheck = $pdo->prepare(
-    'SELECT submission_id, score, correct_count, total_questions, time_used_secs,
+    'SELECT submission_id, exam_id, score, correct_count, total_questions, time_used_secs,
             submitted_at, exit_attempts, auto_submitted
      FROM exam_submissions WHERE exam_id = :eid AND user_id = :uid'
 );
 $subCheck->execute(['eid' => $examId, 'uid' => $user['user_id']]);
 $existingSub = $subCheck->fetch();
 if ($existingSub) {
-    $existingCorrect = (int) $existingSub['correct_count'];
-    $existingTotal   = (int) $existingSub['total_questions'];
-    $existingPct     = $existingTotal > 0 ? round(($existingCorrect / $existingTotal) * 100, 2) : 0.0;
-    $existingPassed  = ($exam['passing_score'] !== null)
-        ? ($existingPct >= (float) $exam['passing_score'])
-        : null;
-
-    sendSuccess([
-        'already_submitted' => true,
-        'submission_id'     => (int) $existingSub['submission_id'],
-        'score'             => $existingCorrect,
-        'correct_count'     => $existingCorrect,
-        'total_questions'   => $existingTotal,
-        'percentage'        => $existingPct,
-        'time_used_secs'    => $existingSub['time_used_secs'] !== null ? (int) $existingSub['time_used_secs'] : null,
-        'exit_attempts'     => (int) $existingSub['exit_attempts'],
-        'auto_submitted'    => (bool) $existingSub['auto_submitted'],
-        'submitted_at'      => $existingSub['submitted_at'],
-        'passed'            => $existingPassed,
-    ]);
+    $receipt = $buildReceipt($pdo, $existingSub, $passingScore);
+    $receipt['already_submitted'] = true;
+    sendSuccess($receipt);
 }
 
 // If the exam closed (manually or automatically), reject further submissions.
@@ -106,124 +97,114 @@ if (!$enrollCheck->fetch()) {
     sendError('You are not enrolled in this class.', 'NOT_ENROLLED', 403);
 }
 
+// Configuration gates: a missing dependency must fail loudly.
+foreach (['exam_attempts', 'exam_answer_revisions'] as $tableName) {
+    try {
+        $pdo->query("SELECT 1 FROM `$tableName` LIMIT 1");
+    } catch (PDOException $e) {
+        sendError(
+            "The $tableName table is missing on the server. Ask your administrator to apply the migration.",
+            'SERVER_MISCONFIGURED',
+            500
+        );
+    }
+}
+
+// The student must start the exam (exam_start.php action=start) and may only
+// submit while their OWN deadline is still open. A closed exam is handled
+// above, so a late submit after global close is still accepted (finalize).
+$attemptStmt = $pdo->prepare(
+    'SELECT started_at, deadline_at FROM exam_attempts WHERE exam_id = :eid AND user_id = :uid'
+);
+$attemptStmt->execute(['eid' => $examId, 'uid' => $user['user_id']]);
+$attempt = $attemptStmt->fetch();
+
+if (!$attempt) {
+    sendError('Start the exam before submitting.', 'ATTEMPT_NOT_STARTED', 403);
+}
+
+$deadlineAt = $attempt['deadline_at'];
+$now = date('Y-m-d H:i:s');
+if ($deadlineAt && $deadlineAt !== '2099-12-31 23:59:59' && strtotime($deadlineAt) < strtotime($now)) {
+    sendError('Your time for this exam has expired.', 'EXAM_TIME_EXPIRED', 403);
+}
+
 // Fetch all questions for this exam
 $qStmt = $pdo->prepare(
     'SELECT question_id, question_text, question_type, options, correct_answer,
-            points, answer_matching
+            points, answer_matching, answer_rules
      FROM questions WHERE exam_id = :eid'
 );
 $qStmt->execute(['eid' => $examId]);
 $questions = $qStmt->fetchAll();
 
-$totalQuestions = count($questions);
-$correctCount   = 0;
-
-// Default objective scoring: every question is worth exactly 1 point.
-// Correct = +1, wrong/unanswered = +0. Total possible = number of questions.
-foreach ($questions as $q) {
-    $qid        = (string) $q['question_id'];
-    $type       = normalizeQuestionType($q['question_type'] ?? 'MC');
-    $matching   = $q['answer_matching'] ?? 'EXACT';
-    $correct    = $q['correct_answer'];
-    $studentAns = $answers[$qid] ?? null;
-
-    if ($studentAns === null) {
-        // Unanswered — 0 points.
-        continue;
+// Finalize atomically:
+//   1. Lock the (exam, student) submission slot so an in-flight save either
+//      completes before grading (its answer is included) or is rejected after
+//      this submission lands.
+//   2. Merge the latest durable auto-saved revisions as the authoritative
+//      complement: for any question the client did NOT send, use the newest
+//      saved value — a fast submit never drops answers.
+//   3. Insert the submission; a concurrent duplicate insert (23000) is
+//      resolved to the stored row so every retry gets ONE confirmed result.
+$pdo->beginTransaction();
+try {
+    $lockStmt = $pdo->prepare(
+        'SELECT user_id FROM exam_submissions WHERE exam_id = :eid AND user_id = :uid FOR UPDATE'
+    );
+    $lockStmt->execute(['eid' => $examId, 'uid' => $user['user_id']]);
+    if ($lockStmt->fetch()) {
+        $subCheck->execute(['eid' => $examId, 'uid' => $user['user_id']]);
+        $receipt = $buildReceipt($pdo, $subCheck->fetch(), $passingScore);
+        $receipt['already_submitted'] = true;
+        $pdo->commit();
+        sendSuccess($receipt);
     }
 
-    $isCorrect = false;
-
-    switch ($type) {
-        case 'MC':
-        case 'TF':
-            // Older submissions may store the option letter ("B") instead of text
-            $resolved = resolveOptionLetter($studentAns, json_decode($q['options'] ?? '', true) ?: null, $type);
-            $isCorrect = (trim((string) $resolved) === trim((string) $correct));
-            break;
-
-        case 'ID':
-            $studentTrimmed = trim((string) $studentAns);
-            $correctTrimmed = trim((string) $correct);
-            if ($matching === 'IGNORE_CASE') {
-                $isCorrect = (mb_strtolower($studentTrimmed) === mb_strtolower($correctTrimmed));
-            } else {
-                $isCorrect = ($studentTrimmed === $correctTrimmed);
-            }
-            break;
-
-        case 'ENUM':
-            // All-or-nothing: every expected line must match, exactly like
-            // exam_grading.php::isAnswerCorrect. No partial credit.
-            $expectedLines = preg_split('/\r?\n|\|/', trim((string) $correct));
-            $expectedLines = array_map('trim', $expectedLines);
-            $expectedLines = array_filter($expectedLines, fn($l) => $l !== '');
-
-            $studentLines = preg_split('/\r?\n|,|\|/', (string) $studentAns);
-            $studentLines = array_map('trim', $studentLines);
-            $studentLines = array_filter($studentLines, fn($l) => $l !== '');
-
-            $matchedLines = 0;
-            foreach ($expectedLines as $expected) {
-                foreach ($studentLines as $sLine) {
-                    $match = ($matching === 'IGNORE_CASE')
-                        ? (mb_strtolower($sLine) === mb_strtolower($expected))
-                        : ($sLine === $expected);
-                    if ($match) {
-                        $matchedLines++;
-                        break;
-                    }
-                }
-            }
-
-            $isCorrect = count($expectedLines) > 0 && $matchedLines === count($expectedLines);
-            break;
+    $saved = loadStudentRevisionAnswers($pdo, $examId, $user['user_id'])['answers'];
+    foreach ($saved as $qid => $value) {
+        $qid = (string) $qid;
+        if (!array_key_exists($qid, $answers) && $value !== null && $value !== '') {
+            $answers[$qid] = $value;
+        }
     }
 
-    if ($isCorrect) {
-        $correctCount++;
+    $grade = gradeExamQuestions($questions, $answers, $passingScore);
+    $totalQuestions = $grade['total_questions'];
+
+    $inserted = true;
+    try {
+        $pdo->prepare(
+            'INSERT INTO exam_submissions
+                (exam_id, user_id, answers_json, score, correct_count, total_questions,
+                 time_used_secs, exit_attempts, auto_submitted)
+             VALUES
+                (:eid, :uid, :answers, :score, :correct, :total, :time, :exit, :auto)'
+        )->execute([
+            'eid'    => $examId,
+            'uid'    => $user['user_id'],
+            'answers'=> json_encode($answers),
+            'score'  => $grade['score'],
+            'correct'=> $grade['correct_count'],
+            'total'  => $totalQuestions,
+            'time'   => $timeUsedSecs,
+            'exit'   => $exitAttempts,
+            'auto'   => $autoSubmitted,
+        ]);
+    } catch (PDOException $e) {
+        if ($e->getCode() !== '23000') throw $e;
+        $inserted = false;
     }
+
+    // One authoritative row exists regardless of this request winning or losing
+    // the insert race; read it back so every retry gets the SAME result.
+    $subCheck->execute(['eid' => $examId, 'uid' => $user['user_id']]);
+    $receipt = $buildReceipt($pdo, $subCheck->fetch(), $passingScore);
+    $receipt['already_submitted'] = !$inserted;
+
+    $pdo->commit();
+    sendSuccess($receipt);
+} catch (PDOException $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    throw $e;
 }
-
-// SCORE = number of correct answers (= raw points, 1 per correct question).
-$score = $correctCount;
-
-// PERCENTAGE = (correct / total questions) x 100. Never treated as added points.
-$percentage = $totalQuestions > 0
-    ? round(($correctCount / $totalQuestions) * 100, 2)
-    : 0.0;
-
-// Pass/fail is decided from the percentage against the teacher's passing score.
-$passed = ($exam['passing_score'] !== null)
-    ? ($percentage >= (float) $exam['passing_score'])
-    : null;
-
-// Save submission
-$pdo->prepare(
-    'INSERT INTO exam_submissions
-        (exam_id, user_id, answers_json, score, correct_count, total_questions,
-         time_used_secs, exit_attempts, auto_submitted)
-     VALUES
-        (:eid, :uid, :answers, :score, :correct, :total, :time, :exit, :auto)'
-)->execute([
-    'eid'    => $examId,
-    'uid'    => $user['user_id'],
-    'answers'=> json_encode($answers),
-    'score'  => $score,
-    'correct'=> $correctCount,
-    'total'  => $totalQuestions,
-    'time'   => $timeUsedSecs,
-    'exit'   => $exitAttempts,
-    'auto'   => $autoSubmitted,
-]);
-
-sendSuccess([
-    'score'             => $score,
-    'correct_count'     => $correctCount,
-    'total_questions'   => $totalQuestions,
-    'percentage'        => $percentage,
-    'passing_score'     => $exam['passing_score'] ?? null,
-    'passed'            => $passed,
-    'time_used_secs'    => $timeUsedSecs,
-    'exit_attempts'     => $exitAttempts,
-    'auto_submitted'    => (bool) $autoSubmitted,]);

@@ -26,6 +26,13 @@ function e($value): string {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
+/** Root-relative public admin URL, also valid under a local backend prefix. */
+function admin_url(string $path = ''): string {
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/rmc-admin/login.php';
+    $backend = rtrim(str_replace('\\', '/', dirname(dirname($script))), '/');
+    return $backend . '/admin/' . ltrim($path, '/');
+}
+
 /** Absolute URL of the shared API directory, derived from the current request. */
 function admin_api_base(): string {
     $scriptName = $_SERVER['SCRIPT_NAME'] ?? '/Capstone-Mobile-Quiz-System/Backend-PHP/rmc-admin/login.php';
@@ -63,7 +70,12 @@ function admin_api_request(string $method, string $path, array $payload = [], ?s
             CURLOPT_CUSTOMREQUEST  => $method,
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_TIMEOUT        => 15,
-            CURLOPT_SSL_VERIFYPEER => false, // local XAMPP has no valid cert; overridden by HTTPS origin
+            // TLS peer verification stays ON: the panel self-calls the API
+            // on the same host. Local XAMPP uses plain http (no TLS, option
+            // ignored); Render's HTTPS endpoint has a valid cert, so the
+            // system CA bundle verifies it normally.
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
         ]);
         if ($json !== null) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, $json);
@@ -167,7 +179,7 @@ if (!admin_logged_in()) {
 /** Redirect to the login page when the admin is not authenticated. */
 function admin_require_login(): void {
     if (!admin_logged_in()) {
-        header('Location: login.php');
+        header('Location: ' . admin_url('login'));
         exit;
     }
 }

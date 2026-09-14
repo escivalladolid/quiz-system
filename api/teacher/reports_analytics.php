@@ -32,7 +32,7 @@ try {
     if (!$stmt->fetch()) sendError('Class not found.', 'NOT_FOUND', 404);
 
     // Exams for this class
-    $stmt = $pdo->prepare("SELECT exam_id, exam_name, total_points, passing_score FROM exams WHERE class_id=? ORDER BY exam_name");
+    $stmt = $pdo->prepare("SELECT e.exam_id, e.exam_name, COALESCE(qtp.tp,0) AS total_points, e.passing_score FROM exams e LEFT JOIN (SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id=e.exam_id WHERE e.class_id=? ORDER BY e.exam_name");
     $stmt->execute([$class_id]);
     $all_exams = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -79,19 +79,24 @@ try {
     }
 
     // Build exam lookup maps
+    $tpStmt = $pdo->prepare("SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions WHERE exam_id IN ($placeholders) GROUP BY exam_id");
+    $tpStmt->execute($target_ids);
     $exam_max_map = [];
+    while ($tpRow = $tpStmt->fetch(PDO::FETCH_ASSOC)) {
+        $exam_max_map[$tpRow['exam_id']] = (int)$tpRow['tp'];
+    }
     $passing_map = [];
     foreach ($all_exams as $ex) {
-        $exam_max_map[$ex['exam_id']] = (int)($ex['total_points'] ?? 100);
+        if (!isset($exam_max_map[$ex['exam_id']])) $exam_max_map[$ex['exam_id']] = 0;
         $passing_map[$ex['exam_id']] = (int)($ex['passing_score'] ?? 0);
     }
 
 // All individual percentages for distribution & summary
     $all_pcts = [];
     foreach ($all_submissions as $sub) {
-        $correct = (int) ($sub['correct_count'] ?? 0);
-        $total   = (int) ($sub['total_questions'] ?? 0);
-        $all_pcts[] = $total > 0 ? round(($correct / $total) * 100) : 0;
+        $earned = (int) ($sub['score'] ?? 0);
+        $tp     = $exam_max_map[$sub['exam_id']] ?? 0;
+        $all_pcts[] = $tp > 0 ? round(($earned / $tp) * 100) : 0;
     }
     $total_subs = count($all_pcts);
 
@@ -123,21 +128,21 @@ try {
         $pct_sum = 0;
         $pct_count = 0;
         $total_score = 0;
-        $total_questions = 0;
+        $total_points_total = 0;
         $all_passed = true;
 
 foreach ($subs as $s) {
-            $score   = (int)$s['correct_count'];
-            $tq      = (int)$s['total_questions'];
+            $score   = (int)$s['score'];
+            $tp      = $exam_max_map[$s['exam_id']] ?? 0;
 
-            // Percentage is derived from correct answers vs total questions.
-            $pct = round(($tq > 0 ? ($score / $tq) * 100 : 0), 1);
+            // Percentage is derived from earned points vs sum of question points.
+            $pct = round(($tp > 0 ? ($score / $tp) * 100 : 0), 1);
             $pct_sum += $pct;
             $pct_count++;
 
             // For display: total score across submissions
             $total_score += $score;
-            $total_questions += $tq;
+            $total_points_total += $tp;
 
             // Check pass/fail per exam (percentage >= passing_score)
             $passing = $passing_map[$s['exam_id']] ?? 0;
@@ -158,7 +163,7 @@ foreach ($subs as $s) {
             'first_name' => $stu['first_name'],
             'last_name'  => $stu['last_name'],
             'score'      => $total_score,
-            'total'      => $total_questions,
+            'total'      => $total_points_total,
             'percentage' => $avg_pct,
             'passed'     => $all_passed,
         ];

@@ -533,6 +533,15 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     font-size:12.5px;padding:8px 10px;border-radius:6px;margin-bottom:12px;}
   .modal-alert.show{display:block;}
 
+  /* ---------- Flash banners ---------- */
+  .flash-banner{margin:0 0 0;display:flex;align-items:center;gap:10px;
+    padding:11px 16px;border-radius:10px;font-size:13px;font-weight:600;
+    line-height:1.4;}
+  .flash-banner.alert-ok{background:#e5f4ec;color:#1d8a4e;border:1px solid #bfe3cf;}
+  .flash-banner.alert-error{background:rgba(196,69,60,0.08);color:#b3411e;border:1px solid rgba(179,52,31,0.3);}
+  @keyframes flashFadeOut{0%{opacity:1;transform:translateY(0)}70%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-8px)}}
+  .flash-banner.auto-hide{animation:flashFadeOut 5s ease forwards;}
+
   /* ---------- Tag chips (portable admin.css styles) ---------- */
   .tag{
     display:inline-block;font-family:'Inter';font-size:10.5px;font-weight:700;
@@ -742,6 +751,12 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
 
 <div class="shell">
 
+  <?php if (!empty($_SESSION['flash'])): ?>
+  <div style="padding:18px 18px 0;">
+    <?php admin_flash_display(); ?>
+  </div>
+  <?php endif; ?>
+
   <!-- ================= SIDEBAR ================= -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
@@ -822,7 +837,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -922,7 +937,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1038,10 +1053,36 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </tbody>
           </table>
           </div>
-          <div class="table-note"><?php echo number_format(count($users)); ?> account(s) shown · admins cannot be banned by checkbox (this is you — use row actions)</div>
+<div class="table-note"><?php echo number_format(count($users)); ?> account(s) shown · admins cannot be banned by checkbox (this is you — use row actions)</div>
         </div>
+
+        <div class="table-panel">
+          <div style="padding:18px 20px;">
+            <h3 style="margin:0 0 4px;">Import Roster</h3>
+            <div style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">
+              Upload the registrar's student list (LRNs) or HR employee list so students and teachers can
+              register and auto-activate through the app. Re-importing a file updates existing entries and adds new rows.
+            </div>
+            <div class="form-row" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;">
+              <div class="field" style="flex:1;min-width:220px;margin:0;">
+                <label>Student roster (.csv) &mdash; columns: <span class="mono">student_no, full_name, program</span></label>
+                <input class="input" type="file" id="studentRosterFile" accept=".csv,text/csv">
+              </div>
+              <button class="btn btn-amber" type="button" id="btnImportStudents">Import student roster</button>
+            </div>
+            <div class="form-row" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-top:12px;">
+              <div class="field" style="flex:1;min-width:220px;margin:0;">
+                <label>Teacher roster (.csv) &mdash; columns: <span class="mono">employee_number, full_name, department</span></label>
+                <input class="input" type="file" id="teacherRosterFile" accept=".csv,text/csv">
+              </div>
+              <button class="btn btn-amber" type="button" id="btnImportTeachers">Import teacher roster</button>
+            </div>
+            <div class="modal-alert" id="rosterImportAlert"></div>
+            <div class="mono" id="rosterImportSummary" style="margin-top:8px;font-size:12.5px;color:var(--ink-soft);"></div>
+          </div>
+        </div>
+
       </div>
-    </div>
 
     <!-- ============ CLASS MANAGEMENT VIEW ============ -->
     <div class="view" id="view-classes">
@@ -1064,7 +1105,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1170,7 +1211,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1290,7 +1331,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1377,7 +1418,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1545,7 +1586,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="logout.php">
+              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Log Out
               </a>
@@ -1717,7 +1758,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
         <input type="password" name="password" required minlength="8">
       </div>
       <div class="form-row" id="rowStudentId">
-        <label>Student ID / LRN</label>
+        <label>Student No.</label>
         <input type="text" name="student_id">
       </div>
       <div class="form-row" id="rowYearLevel">
@@ -1999,7 +2040,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     }
     var btn = ev.target.querySelector('[type="submit"]');
     btn.disabled = true; btn.textContent = 'Creating…';
-    fetch('ajax.php?action=user_create', {
+    fetch('ajax?action=user_create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -2031,7 +2072,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
   });
 
   function postAjax(action, payload){
-    return fetch('ajax.php?action=' + action, {
+    return fetch('ajax?action=' + action, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -2171,7 +2212,9 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     btn.disabled = true; btn.textContent = 'Saving…';
     postAjax(editingUserId === null ? 'user_create' : 'user_update', payload)
       .then(function(res){
-        if (res.success) { window.location.reload(); }
+        if (res.success) {
+          window.location.reload();
+        }
         else { document.getElementById('userFormAlert').textContent = res.error || 'Request failed.'; document.getElementById('userFormAlert').classList.add('show'); }
       })
       .catch(function(){ document.getElementById('userFormAlert').textContent = 'Network error.'; document.getElementById('userFormAlert').classList.add('show'); })
@@ -2195,6 +2238,76 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
         .then(function(res){ res.success ? done(true) : done(false, res.error || m[1] + ' failed.'); })
         .catch(function(){ done(false, 'Network error.'); });
     });
+  });
+
+  /* roster import */
+  var rosterAlertEl = document.getElementById('rosterImportAlert');
+  var rosterSummaryEl = document.getElementById('rosterImportSummary');
+  function showRosterAlert(msg){
+    rosterAlertEl.textContent = msg || '';
+    rosterAlertEl.classList.toggle('show', !!msg);
+  }
+  function parseCSVRows(text, cols){
+    var rows = [], cur = [], field = '', quoted = false;
+    for (var i = 0; i < text.length; i++) {
+      var c = text[i];
+      if (quoted) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else { quoted = false; }
+        } else { field += c; }
+      } else {
+        if (c === '"') { quoted = true; }
+        else if (c === ',') { cur.push(field); field = ''; }
+        else if (c === '\n' || c === '\r') {
+          if (c === '\r' && text[i + 1] === '\n') i++;
+          cur.push(field); field = '';
+          if (cur.join('').trim() !== '') rows.push(cur);
+          cur = [];
+        } else { field += c; }
+      }
+    }
+    if (field !== '' || cur.length) { cur.push(field); if (cur.join('').trim() !== '') rows.push(cur); }
+    return rows.map(function(r){
+      var o = {};
+      for (var j = 0; j < cols.length; j++) o[cols[j]] = (r[j] || '').trim();
+      return o;
+    });
+  }
+  function handleRosterImport(inputEl, cols, action){
+    var f = inputEl.files && inputEl.files[0];
+    if (!f) { showRosterAlert('Choose a CSV file first.'); return; }
+    var reader = new FileReader();
+    reader.onload = function(){
+      try {
+        var rows = parseCSVRows(String(reader.result), cols);
+        var header = rows.length ? (rows[0][cols[0]] || '').toLowerCase() : '';
+        if (rows.length && (cols.indexOf(header) !== -1 ||
+            (action === 'roster_import_student' && header === 'student_no'))) rows.shift();
+        if (!rows.length) { showRosterAlert('No data rows found in ' + f.name + '.'); return; }
+        rosterSummaryEl.textContent = '';
+        showRosterAlert('Importing ' + rows.length + ' row(s)…');
+        postAjax(action, { rows: rows })
+          .then(function(res){
+            if (res.success && res.data) {
+              var d = res.data;
+              var msg = 'Imported ' + d.added + ' new, updated ' + d.updated + ', skipped ' + d.skipped + '.';
+              showRosterAlert(d.skipped > 0 ? msg : '');
+              rosterSummaryEl.textContent = (d.errors || []).length
+                ? 'Skipped rows: ' + d.errors.slice(0, 4).join(' · ') + ((d.errors || []).length > 4 ? ' · …' : '')
+                : msg;
+            } else { showRosterAlert(res.error || 'Import failed.'); }
+          })
+          .catch(function(){ showRosterAlert('Network error.'); });
+      } catch (e) { showRosterAlert('Could not read ' + f.name + ': ' + e.message); }
+    };
+    reader.readAsText(f);
+  }
+  document.getElementById('btnImportStudents').addEventListener('click', function(){
+    handleRosterImport(document.getElementById('studentRosterFile'), ['lrn', 'full_name', 'program'], 'roster_import_student');
+  });
+  document.getElementById('btnImportTeachers').addEventListener('click', function(){
+    handleRosterImport(document.getElementById('teacherRosterFile'), ['employee_number', 'full_name', 'department'], 'roster_import_teacher');
   });
 
   /* bulk selection */
@@ -2366,7 +2479,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     rosterLoading.classList.remove('hidden');
     document.getElementById('btnRosterSave').disabled = true;
     openMd('modal-roster');
-    fetch('ajax.php?action=class_roster&class_id=' + id)
+    fetch('ajax?action=class_roster&class_id=' + id)
       .then(function(r){ return r.json(); })
       .then(function(res){
         if (!res.success) throw new Error(res.error || 'Failed to load roster.');
@@ -2460,7 +2573,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     document.getElementById('edAlert').classList.remove('show');
     document.getElementById('edBody').innerHTML = '<div class="empty-state">Loading…</div>';
     openMd('modal-exam');
-    fetch('ajax.php?action=exam_detail&exam_id=' + id)
+    fetch('ajax?action=exam_detail&exam_id=' + id)
       .then(function(r){ return r.json(); })
       .then(function(res){
         if (!res.success) throw new Error(res.error || 'Failed to load.');

@@ -42,7 +42,7 @@ try {
             (SELECT COUNT(*) FROM enrollments WHERE class_id=c.class_id) AS total_students,
             (SELECT COUNT(*) FROM exam_submissions WHERE exam_id=e.exam_id) AS submission_count,
             (SELECT COUNT(*) FROM questions WHERE exam_id=e.exam_id) AS question_count,
-            (SELECT ROUND(AVG(CASE WHEN total_questions > 0 THEN (correct_count / total_questions) * 100 END), 1) FROM exam_submissions WHERE exam_id=e.exam_id) AS class_average
+            (SELECT ROUND(AVG(CASE WHEN COALESCE(qtp.tp,0) > 0 THEN (es.score / qtp.tp) * 100 END), 1) FROM exam_submissions es LEFT JOIN (SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id=es.exam_id WHERE es.exam_id=e.exam_id) AS class_average
         FROM exams e
         JOIN classes c ON e.class_id=c.class_id
         WHERE c.teacher_id=?

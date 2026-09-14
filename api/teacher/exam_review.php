@@ -25,10 +25,11 @@ try {
 
     // Verify the teacher owns this exam's class.
     $examStmt = $pdo->prepare(
-        'SELECT e.exam_id, e.exam_name, e.total_points AS max_points, e.passing_score,
+        'SELECT e.exam_id, e.exam_name, e.is_closed, COALESCE(qtp.tp, 0) AS max_points, e.passing_score,
                 c.subject_name, c.class_code, c.block
          FROM exams e
          JOIN classes c ON c.class_id = e.class_id
+         LEFT JOIN (SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id = e.exam_id
          WHERE e.exam_id = ? AND c.teacher_id = ?'
     );
     $examStmt->execute([$examId, $teacherId]);
@@ -41,9 +42,9 @@ try {
     // Per-student review: ?exam_id=X&student_id=Y
     $studentId = isset($_GET['student_id']) ? (int) $_GET['student_id'] : 0;
     if ($studentId > 0) {
-        $subStmt = $pdo->prepare(
+$subStmt = $pdo->prepare(
             'SELECT s.submission_id, s.user_id, s.score, s.correct_count, s.total_questions,
-                    s.time_used_secs, s.submitted_at, s.answers_json,
+                    s.time_used_secs, s.submitted_at, s.answers_json, s.results_released, s.released_at,
                     u.first_name, u.last_name
              FROM exam_submissions s
              JOIN users u ON u.user_id = s.user_id
@@ -65,9 +66,9 @@ try {
         $logStmt->execute(['eid' => $examId, 'uid' => $studentId]);
         $tabSwitchLog = array_map(fn($r) => $r['created_at'], $logStmt->fetchAll());
 
-$subCorrect = (int) $submission['correct_count'];
-        $subTotal   = (int) $submission['total_questions'];
-        $subPct     = $subTotal > 0 ? round(($subCorrect / $subTotal) * 100, 2) : 0.0;
+$subScore   = (int) $submission['score'];
+        $maxPts    = (int) $exam['max_points'];
+        $subPct     = $maxPts > 0 ? round(($subScore / $maxPts) * 100, 2) : 0.0;
 
         sendSuccess([
             'exam' => [
@@ -75,19 +76,23 @@ $subCorrect = (int) $submission['correct_count'];
                 'exam_name' => $exam['exam_name'],
                 'subject_name' => $exam['subject_name'],
                 'block'     => $exam['block'],
-                'max_points'    => (int) $subTotal,
+                'max_points'    => $maxPts,
                 'passing_score' => $exam['passing_score'] !== null ? (int) $exam['passing_score'] : null,
+                'is_closed' => (int) $exam['is_closed'] === 1,
             ],
             'student' => [
                 'submission_id'   => (int) $submission['submission_id'],
                 'student_id'      => (int) $submission['user_id'],
                 'student_name'    => trim($submission['first_name'] . ' ' . $submission['last_name']),
-                'score'           => $subCorrect,
-                'correct_count'   => $subCorrect,
-                'total_questions' => $subTotal,
+                'score'           => $subScore,
+                'correct_count'   => (int) $submission['correct_count'],
+                'total_questions' => (int) $submission['total_questions'],
+                'total_points'    => $maxPts,
                 'percentage'      => $subPct,
                 'time_used_secs'  => $submission['time_used_secs'] !== null ? (int) $submission['time_used_secs'] : null,
                 'submitted_at'    => $submission['submitted_at'],
+                'results_released' => (int) $submission['results_released'] === 1,
+                'released_at'     => $submission['released_at'],
                 'tab_switch_count' => count($tabSwitchLog),
             ],
             'tab_switch_log' => $tabSwitchLog,
@@ -96,36 +101,39 @@ $subCorrect = (int) $submission['correct_count'];
     }
 
     // Submission list
-    $listStmt = $pdo->prepare(
+$listStmt = $pdo->prepare(
         'SELECT s.submission_id, s.user_id, s.score, s.correct_count, s.total_questions,
-                s.time_used_secs, s.submitted_at,
+                s.time_used_secs, s.submitted_at, s.results_released, s.released_at,
                 u.first_name, u.last_name,
                 (SELECT COUNT(*) FROM exam_proctoring_log p
                   WHERE p.exam_id = s.exam_id AND p.user_id = s.user_id) AS tab_switch_count
          FROM exam_submissions s
          JOIN users u ON u.user_id = s.user_id
 WHERE s.exam_id = :eid
-         ORDER BY (CASE WHEN s.total_questions > 0 THEN s.correct_count / s.total_questions END) DESC,
-                  s.submitted_at ASC'
+         ORDER BY s.score DESC,
+                   s.submitted_at ASC'
     );
     $listStmt->execute(['eid' => $examId]);
     $submissions = $listStmt->fetchAll();
 
 $payload = [];
     foreach ($submissions as $s) {
-        $correct = (int) $s['correct_count'];
-        $total   = (int) $s['total_questions'];
-        $pct     = $total > 0 ? round(($correct / $total) * 100, 2) : 0.0;
+        $earned = (int) $s['score'];
+        $total   = (int) $exam['max_points'];
+        $pct     = $total > 0 ? round(($earned / $total) * 100, 2) : 0.0;
         $payload[] = [
             'submission_id'   => (int) $s['submission_id'],
             'student_id'      => (int) $s['user_id'],
             'student_name'    => trim($s['first_name'] . ' ' . $s['last_name']),
-            'score'           => $correct,
-            'correct_count'   => $correct,
-            'total_questions' => $total,
+            'score'           => $earned,
+            'correct_count'   => (int) $s['correct_count'],
+            'total_questions' => (int) $s['total_questions'],
+            'total_points'    => $total,
             'percentage'      => $pct,
             'time_used_secs'  => $s['time_used_secs'] !== null ? (int) $s['time_used_secs'] : null,
             'submitted_at'    => $s['submitted_at'],
+            'results_released' => (int) $s['results_released'] === 1,
+            'released_at'     => $s['released_at'],
             'tab_switch_count' => (int) $s['tab_switch_count'],
         ];
     }
@@ -138,6 +146,7 @@ $payload = [];
             'block'         => $exam['block'],
             'max_points'    => (int) $exam['max_points'],
             'passing_score' => $exam['passing_score'] !== null ? (int) $exam['passing_score'] : null,
+            'is_closed'     => (int) $exam['is_closed'] === 1,
         ],
         'submissions' => $payload,
     ]);

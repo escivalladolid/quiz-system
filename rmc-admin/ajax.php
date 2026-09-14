@@ -20,6 +20,8 @@ $routes = [
     'user_create'         => ['POST', 'admin/user_create.php'],
     'user_update'         => ['POST', 'admin/user_update.php'],
     'user_status'         => ['POST', 'admin/user_status.php'],
+    'roster_import_student' => ['POST', 'admin/import_student_roster.php'],
+    'roster_import_teacher' => ['POST', 'admin/import_teacher_roster.php'],
     'class_create'        => ['POST', 'admin/class_create.php'],
     'class_update'        => ['POST', 'admin/class_update.php'],
     'class_status'        => ['POST', 'admin/class_status.php'],
@@ -64,6 +66,41 @@ $res = admin_api_request($method, $path, $payload, $_SESSION['admin_user']['toke
 if ($res['http_code'] >= 400) {
     http_response_code($res['http_code']);
 }
+
+$ok = is_array($res['body']) && ($res['body']['success'] ?? false) === true;
+
+if ($ok) {
+    $flashMap = [
+        'user_create'         => 'User created successfully.',
+        'user_update'         => (((string) ($payload['password'] ?? '')) !== '' ? 'Password updated successfully.' : 'User updated successfully.'),
+        'class_create'        => 'Class created successfully.',
+        'class_update'        => 'Class updated successfully.',
+        'class_roster_update' => 'Roster updated successfully.',
+    ];
+
+    if (isset($flashMap[$action])) {
+        admin_flash_set('success', $flashMap[$action]);
+    } elseif ($action === 'user_status') {
+        $s = strtoupper((string) ($payload['status'] ?? ''));
+        $label = ($s === 'BANNED' ? 'banned' : ($s === 'INACTIVE' ? 'suspended' : 'activated'));
+        $count = is_array($payload['user_ids'] ?? null) ? count($payload['user_ids']) : 1;
+        admin_flash_set('success', $label . ' ' . $count . ' user' . ($count === 1 ? '' : 's') . '.');
+    } elseif ($action === 'class_status') {
+        $archived = strtoupper((string) ($payload['status'] ?? '')) === 'ARCHIVED';
+        admin_flash_set('success', $archived ? 'Class archived.' : 'Class restored.');
+    } elseif ($action === 'exam_status') {
+        $act = strtolower((string) ($payload['action'] ?? ''));
+        $labels = ['force_close' => 'Exam force-closed.', 'archive' => 'Exam archived.', 'schedule' => 'Exam scheduled.'];
+        admin_flash_set('success', $labels[$act] ?? 'Exam updated.');
+    } elseif ($action === 'session_kill') {
+        admin_flash_set('success', 'Session terminated.');
+    } elseif ($action === 'roster_import_student') {
+        admin_flash_set('success', 'Student roster imported.');
+    } elseif ($action === 'roster_import_teacher') {
+        admin_flash_set('success', 'Teacher roster imported.');
+    }
+}
+
 echo json_encode(is_array($res['body']) && $res['body'] !== []
     ? $res['body']
     : ['success' => false, 'error' => 'Unexpected API response.', 'code' => 'UPSTREAM_ERROR']);

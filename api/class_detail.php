@@ -45,21 +45,29 @@ if (!$classInfo) {
 // Get exams for this class
 $examStmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.duration_minutes, e.status, e.total_points,
-            s.correct_count, s.total_questions
+            s.score, s.correct_count, s.total_questions, qtp.tp
      FROM exams e
      LEFT JOIN exam_submissions s ON s.exam_id = e.exam_id AND s.user_id = :uid
+     LEFT JOIN (
+         SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id
+     ) qtp ON qtp.exam_id = e.exam_id
      WHERE e.class_id = :cid
      ORDER BY FIELD(e.status, \'LIVE\', \'SCHEDULED\', \'DRAFT\', \'CLOSED\', \'ARCHIVED\'), e.exam_name ASC'
 );
 $examStmt->execute(['uid' => $user['user_id'], 'cid' => $classId]);
 $exams = $examStmt->fetchAll();
 
-// Normalize to canonical score model: score = correct count, percentage derived.
+// Normalize to the variable-point score model: score = earned points (stored),
+// max_points = SUM of the exam's question points, percentage derived.
 foreach ($exams as &$ex) {
-    $correct = $ex['correct_count'] !== null ? (int) $ex['correct_count'] : null;
-    $total   = $ex['total_questions'] !== null ? (int) $ex['total_questions'] : null;
-    $ex['score']      = $correct;
-    $ex['percentage'] = ($correct !== null && $total > 0) ? round(($correct / $total) * 100, 2) : null;
+    $examId       = (int) $ex['exam_id'];
+    $earned       = $ex['score'] !== null ? (int) $ex['score'] : null;
+    $totalPts     = $ex['score'] !== null ? (int) ($ex['tp'] ?? 0) : null;
+    $ex['score']         = $earned;
+    $ex['earned_points'] = $earned;
+    $ex['total_points']  = $totalPts;
+    $ex['max_points']    = $totalPts;
+    $ex['percentage']    = ($earned !== null && $totalPts > 0) ? round(($earned / $totalPts) * 100, 2) : null;
 }
 unset($ex);
 

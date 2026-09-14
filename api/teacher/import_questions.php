@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
-require_once __DIR__ . '/../../helpers/exam_grading.php';
+require_once __DIR__ . '/../../helpers/exam_builder.php';
 
 header('Content-Type: application/json');
 
@@ -27,12 +27,17 @@ if (!is_array($input['questions']) || empty($input['questions'])) {
 }
 
 try {
-    $stmt = $pdo->prepare("SELECT e.exam_id FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.exam_id=? AND c.teacher_id=?");
+    $stmt = $pdo->prepare("SELECT e.exam_id, e.status FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.exam_id=? AND c.teacher_id=?");
     $stmt->execute([$input['exam_id'], $teacher_id]);
-    if (!$stmt->fetch()) {
+    $exam = $stmt->fetch();
+    if (!$exam) {
         sendError('Exam not found or not authorized.', 'NOT_FOUND', 404);
     }
 
+    $lock = $pdo->prepare('SELECT COUNT(*) FROM exam_submissions WHERE exam_id=?');
+    $lock->execute([$input['exam_id']]);
+    if ($lock->fetchColumn() > 0) sendError('Questions are locked after submissions.', 'FIELDS_LOCKED',409);
+    $input['questions'] = prepareBuilderQuestions($input['questions'], $exam['status'] !== 'DRAFT');
     $pdo->beginTransaction();
 
     $stmt = $pdo->prepare("SELECT COALESCE(MAX(order_num), -1) + 1 FROM questions WHERE exam_id=?");
@@ -40,7 +45,7 @@ try {
     $next_index = (int)$stmt->fetchColumn();
 
     $count = 0;
-    $insert = $pdo->prepare("INSERT INTO questions (exam_id, question_text, question_type, options, correct_answer, points, answer_matching, order_num) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    $insert = $pdo->prepare("INSERT INTO questions (exam_id, question_text, question_type, options, correct_answer, points, answer_matching, answer_rules, order_num) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
     foreach ($input['questions'] as $q) {
         $options = isset($q['options']) ? (is_array($q['options']) ? json_encode($q['options']) : $q['options']) : null;
         $insert->execute([
@@ -51,6 +56,7 @@ try {
             $q['correct_answer'] ?? null,
             $q['points'] ?? 1,
             $q['answer_matching'] ?? 'EXACT',
+            $q['answer_rules'] ?? null,
             $next_index + $count
         ]);
         $count++;
@@ -62,8 +68,10 @@ try {
         'message' => "Successfully imported $count questions",
         'count' => $count
     ], 201);
+} catch (InvalidArgumentException $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    sendError($e->getMessage(),'INVALID_QUESTIONS',422);
 } catch (PDOException $e) {
-    $pdo->rollBack();
-    error_log('QuizSystem DB Error: ' . $e->getMessage());
-    sendError('An unexpected error occurred. Please try again.', 'DB_ERROR', 500);
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);
 }

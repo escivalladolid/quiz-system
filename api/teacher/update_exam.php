@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_grading.php';
+require_once __DIR__ . '/../../helpers/exam_builder.php';
 
 header('Content-Type: application/json');
 
@@ -34,8 +35,17 @@ try {
     $subRow = $stmt2->fetch(PDO::FETCH_ASSOC);
     $hasSubmissions = ((int)$subRow['cnt']) > 0;
 
+    if (isset($input['questions'])) {
+        $statusStmt = $pdo->prepare('SELECT status FROM exams WHERE exam_id=?');
+        $statusStmt->execute([$exam_id]);
+        $publishing = strtoupper($input['status'] ?? $statusStmt->fetchColumn()) !== 'DRAFT';
+        if (!is_array($input['questions'])) throw new InvalidArgumentException('Questions must be a list.');
+        $input['questions'] = prepareBuilderQuestions($input['questions'], $publishing);
+    }
+
+    $pdo->beginTransaction();
     $safeFields = ['exam_name', 'description', 'duration_minutes', 'passing_score', 'total_points', 'max_exit_attempts'];
-    $lockedFields = ['randomize_questions', 'randomize_options'];
+    $lockedFields = ['randomize_questions', 'randomize_options', 'duration_minutes', 'passing_score', 'total_points', 'max_exit_attempts', 'start_time', 'end_time'];
 
     $updates = [];
     $params = [];
@@ -54,7 +64,7 @@ try {
                 $rejected[] = $field;
             }
         }
-        if (!empty($input['questions'])) {
+        if (isset($input['questions'])) {
             $rejected[] = 'questions';
         }
 
@@ -115,10 +125,10 @@ try {
             }
         }
 
-        if (!empty($input['questions']) && is_array($input['questions'])) {
+        if (isset($input['questions']) && is_array($input['questions'])) {
             $pdo->prepare("DELETE FROM questions WHERE exam_id=?")->execute([$exam_id]);
 
-            $ins = $pdo->prepare("INSERT INTO questions (exam_id, question_type, question_text, options, correct_answer, points, answer_matching, order_num) VALUES (?,?,?,?,?,?,?,?)");
+            $ins = $pdo->prepare("INSERT INTO questions (exam_id, question_type, question_text, options, correct_answer, points, answer_matching, answer_rules, order_num) VALUES (?,?,?,?,?,?,?,?,?)");
             foreach ($input['questions'] as $idx => $q) {
                 $opts = isset($q['options']) ? json_encode($q['options']) : null;
                 $ins->execute([
@@ -129,6 +139,7 @@ try {
                     $q['correct_answer'] ?? '',
                     $q['points'] ?? 1,
                     $q['answer_matching'] ?? 'EXACT',
+                $q['answer_rules'] ?? null,
                     $q['order_index'] ?? $idx
                 ]);
             }
@@ -136,6 +147,7 @@ try {
     }
 
     if (empty($updates)) {
+        $pdo->commit();
         if (!empty($input['questions']) && !$hasSubmissions) {
             sendSuccess(['message' => 'Exam questions updated successfully']);
         } else {
@@ -145,9 +157,13 @@ try {
         $params[] = $exam_id;
         $stmt = $pdo->prepare("UPDATE exams SET " . implode(', ', $updates) . " WHERE exam_id=?");
         $stmt->execute($params);
+        $pdo->commit();
         sendSuccess(['message' => 'Exam updated successfully']);
     }
+} catch (InvalidArgumentException $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    sendError($e->getMessage(), 'INVALID_QUESTIONS', 422);
 } catch (PDOException $e) {
-    error_log('QuizSystem DB Error: ' . $e->getMessage());
-    sendError('An unexpected error occurred. Please try again.', 'DB_ERROR', 500);
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);
 }

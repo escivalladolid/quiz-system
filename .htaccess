@@ -1,5 +1,5 @@
-# ============================================================
-# .htaccess — Capstone Mobile Quiz System (Render/Apache)
+﻿# ============================================================
+# .htaccess â€” Capstone Mobile Quiz System (Render/Apache)
 #
 # NOTE: The sensitive backend folders (config/, helpers/,
 # database/) are protected at the Apache vhost level in
