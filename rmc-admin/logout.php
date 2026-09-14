@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/inc/bootstrap.php';
 
+admin_clear_remember_cookie();
+
 $_SESSION = [];
 if (ini_get('session.use_cookies')) {
     $p = session_get_cookie_params();

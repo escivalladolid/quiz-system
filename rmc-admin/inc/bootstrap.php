@@ -9,11 +9,19 @@
  * and on Render with zero configuration.
  */
 
+$admin_forwarded_proto = strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+$admin_secure_request = $admin_forwarded_proto === 'https'
+    || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+
+// Admin pages must never be restored from browser history after authentication changes.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
         'lifetime' => 0,
         'path' => '/',
-        'secure' => false,          // true on Render behind HTTPS; harmless when off locally
+        'secure' => $admin_secure_request,
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
@@ -162,7 +170,7 @@ function admin_clear_remember_cookie(): void {
     setcookie('rmc_admin_remember', '', [
         'expires'  => time() - 42000,
         'path'     => '/',
-        'secure'   => false,
+        'secure'   => $admin_secure_request,
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
