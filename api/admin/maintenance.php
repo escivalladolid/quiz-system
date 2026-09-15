@@ -39,6 +39,7 @@ try {
          FROM sessions s
          JOIN users u ON u.user_id = s.user_id
          JOIN roles r ON r.role_id = u.role_id
+         WHERE s.expires_at > NOW()
          ORDER BY s.created_at DESC
          LIMIT 100"
     )->fetchAll(PDO::FETCH_ASSOC);

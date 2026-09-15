@@ -25,19 +25,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'password' => $password,
         ]);
 
-        $ok = ($res['body']['success'] ?? false) === true;
+        $apiData = is_array($res['body']['data'] ?? null) ? $res['body']['data'] : [];
+        $ok = ($res['body']['success'] ?? false) === true && !empty($apiData['session_token']);
 
-        if ($ok && ($res['body']['data']['role'] ?? null) !== 'ADMIN') {
+        if ($ok && ($apiData['role'] ?? null) !== 'ADMIN') {
             $error = 'This panel is restricted to Admin accounts.';
         } elseif (!$ok) {
             $error = $res['body']['error'] ?? 'Unable to reach the server. Please try again.';
         } else {
+            // Prevent session fixation when credentials are accepted.
+            session_regenerate_id(true);
             $_SESSION['admin_user'] = [
-                'user_id' => (int) ($res['body']['data']['user_id'] ?? 0),
-                'name'    => trim(($res['body']['data']['first_name'] ?? '') . ' ' . ($res['body']['data']['last_name'] ?? '')),
-                'username' => $res['body']['data']['username'] ?? '',
-                'email'   => $res['body']['data']['email'] ?? '',
-                'token'   => $res['body']['data']['session_token'] ?? '',
+                'user_id' => (int) ($apiData['user_id'] ?? 0),
+                'name'    => trim(($apiData['first_name'] ?? '') . ' ' . ($apiData['last_name'] ?? '')),
+                'username' => $apiData['username'] ?? '',
+                'email'   => $apiData['email'] ?? '',
+                'token'   => $apiData['session_token'] ?? '',
             ];
 
             // "Remember this device" — persist the DB-backed API session token
@@ -185,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     padding:8px 10px; border-radius:8px; word-break:break-all;
   }
 </style>
-<script>window.RMC_API = <?php echo json_encode(admin_api_base()); ?>;</script>
+<script>window.RMC_API = <?php echo admin_json_for_script(admin_api_base()); ?>;</script>
 </head>
 <body>
 <div class="wrap-outer">

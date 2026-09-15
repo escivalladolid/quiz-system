@@ -21,9 +21,11 @@ if ($to !== '') { $params['to'] = $to; }
 $db_online = true;
 $data = ['logs' => [], 'total' => 0, 'pages' => 1, 'page' => 1, 'summary' => []];
 
-$res = admin_api_request('GET', 'admin/logs.php?' . http_build_query($params), [], $admin['token']);
-if ($res['http_code'] === 200 && ($res['body']['success'] ?? false) === true) {
-    $data = array_merge($data, $res['body']['data']);
+$res = admin_api_request('GET', 'admin/logs.php?' . http_build_query($params), [], (string) ($admin['token'] ?? ''));
+if (admin_api_response_ok($res)) {
+    $data = admin_api_data($res, $data);
+    $data['logs'] = admin_array_rows($data['logs'] ?? null);
+    $data['summary'] = admin_array_rows($data['summary'] ?? null);
 } else {
     $db_online = false;
 }
@@ -60,14 +62,14 @@ require_once __DIR__ . '/inc/header.php';
 <?php if (!empty($summary)): ?>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
     <a href="logs.php" class="chip" style="text-decoration:none;">All · <?php echo (int) array_sum(array_column($summary, 'cnt')); ?></a>
-    <?php foreach ($summary as $s): ?>
-      <?php $activeChip = ($action === $s['action']); ?>
+          <?php foreach ($summary as $s): ?>
+      <?php $summaryAction = strtoupper((string) ($s['action'] ?? '')); $activeChip = ($action === $summaryAction); ?>
       <a href="<?php echo e('logs.php?' . http_build_query(array_filter([
-          'action' => $s['action'], 'user_id' => $userId > 0 ? $userId : '',
+          'action' => $summaryAction, 'user_id' => $userId > 0 ? $userId : '',
           'search' => $search, 'from' => $from, 'to' => $to
       ], function ($v) { return $v !== '' && $v !== null; }))); ?>"
          class="chip" style="text-decoration:none;<?php echo $activeChip ? 'outline:2px solid var(--accent-500);outline-offset:2px;' : ''; ?>">
-        <?php echo e($s['action']); ?> · <?php echo (int) $s['cnt']; ?>
+        <?php echo e($summaryAction); ?> · <?php echo (int) ($s['cnt'] ?? 0); ?>
       </a>
     <?php endforeach; ?>
   </div>
@@ -104,18 +106,25 @@ require_once __DIR__ . '/inc/header.php';
         </thead>
         <tbody>
           <?php foreach ($logs as $l): ?>
+            <?php
+              $createdAt = (string) ($l['created_at'] ?? '');
+              $actorUsername = (string) ($l['username'] ?? '');
+              $actorName = trim(($l['first_name'] ?? '') . ' ' . ($l['last_name'] ?? ''));
+              $logAction = (string) ($l['action'] ?? '');
+              $logDescription = (string) ($l['description'] ?? '');
+            ?>
             <tr>
-              <td style="white-space:nowrap;font-size:12px;" class="mono"><?php echo e(date('M j, Y  g:i A', strtotime($l['created_at']))); ?></td>
+              <td style="white-space:nowrap;font-size:12px;" class="mono"><?php echo e($createdAt !== '' ? date('M j, Y  g:i A', strtotime($createdAt)) : '—'); ?></td>
               <td>
-                <?php if ($l['username']): ?>
-                  <div><?php echo e(trim($l['first_name'] . ' ' . $l['last_name'])); ?></div>
-                  <div style="font-size:11px;color:var(--ink-400);">@<?php echo e($l['username']); ?></div>
+                <?php if ($actorUsername !== ''): ?>
+                  <div><?php echo e($actorName !== '' ? $actorName : 'Unknown user'); ?></div>
+                  <div style="font-size:11px;color:var(--ink-400);">@<?php echo e($actorUsername); ?></div>
                 <?php else: ?>
                   <span style="color:var(--ink-400);">system</span>
                 <?php endif; ?>
               </td>
-              <td><span class="tag tag-navy"><?php echo e($l['action']); ?></span></td>
-              <td style="color:var(--ink-600);max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo e($l['description']); ?>"><?php echo e($l['description'] ?? ''); ?></td>
+              <td><span class="tag tag-navy"><?php echo e($logAction); ?></span></td>
+              <td style="color:var(--ink-600);max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo e($logDescription); ?>"><?php echo e($logDescription); ?></td>
             </tr>
           <?php endforeach; ?>
         </tbody>

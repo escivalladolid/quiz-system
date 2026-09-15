@@ -438,6 +438,18 @@ body.shell {
   padding: 6px;
   border-radius: 8px;
   line-height: 1;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.logout-form { margin: 0; }
+.dropdown .logout-form { display: block; }
+.dropdown .logout-form .dropdown-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
 }
 .logout-link:hover { background: rgba(255, 255, 255, 0.08); color: #ffb4a9; text-decoration: none; }
 

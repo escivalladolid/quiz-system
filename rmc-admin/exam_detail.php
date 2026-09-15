@@ -11,14 +11,25 @@ $questions = [];
 $submissions = [];
 
 if ($exam_id > 0) {
-    $res = admin_api_request('GET', 'admin/exam_detail.php?exam_id=' . $exam_id, [], $admin['token']);
-    if ($res['http_code'] === 200 && ($res['body']['success'] ?? false) === true) {
-        $exam = $res['body']['data']['exam'] ?? null;
-        $questions = $res['body']['data']['questions'] ?? [];
-        $submissions = $res['body']['data']['submissions'] ?? [];
+    $res = admin_api_request('GET', 'admin/exam_detail.php?exam_id=' . $exam_id, [], (string) ($admin['token'] ?? ''));
+    if (admin_api_response_ok($res)) {
+        $payload = $res['body']['data'];
+        $exam = is_array($payload['exam'] ?? null) ? $payload['exam'] : null;
+        $questions = admin_array_rows($payload['questions'] ?? null);
+        $submissions = admin_array_rows($payload['submissions'] ?? null);
     } else {
         $db_online = false;
     }
+}
+
+if (is_array($exam)) {
+    $exam = array_replace([
+        'exam_name' => 'Unnamed assessment', 'subject_name' => '', 'subject_code' => '',
+        'block' => '', 'status' => 'DRAFT', 'duration_minutes' => 0,
+        'passing_score' => 0, 'question_count' => 0, 'points_count' => 0,
+        'start_time' => null, 'end_time' => null, 'is_closed' => 0,
+        'closed_at' => null, 'max_exit_attempts' => 0,
+    ], $exam);
 }
 
 $STATUS_TAGS = ['DRAFT' => 'tag-dim', 'SCHEDULED' => 'tag-royal', 'LIVE' => 'tag-pass', 'CLOSED' => 'tag-navy', 'ARCHIVED' => 'tag-arch'];
@@ -85,13 +96,13 @@ require_once __DIR__ . '/inc/header.php';
       <?php else: ?>
         <?php foreach ($questions as $q): ?>
           <div class="qrow">
-            <span class="qnum">#<?php echo (int) $q['order_num']; ?></span>
+            <span class="qnum">#<?php echo (int) ($q['order_num'] ?? 0); ?></span>
             <div class="qbody">
-              <div class="qtext"><?php echo e($q['question_text']); ?></div>
+              <div class="qtext"><?php echo e($q['question_text'] ?? ''); ?></div>
               <div style="margin-top:4px;display:flex;gap:6px;align-items:center;">
-                <span class="tag tag-dim"><?php echo e($q['question_type']); ?></span>
-                <span class="mono" style="font-size:11.5px;color:var(--ink-400);"><?php echo (int) $q['points']; ?> pt<?php echo (int) $q['points'] !== 1 ? 's' : ''; ?></span>
-                <?php if ($q['correct_answer'] !== null && $q['correct_answer'] !== ''): ?>
+                <span class="tag tag-dim"><?php echo e($q['question_type'] ?? ''); ?></span>
+                <span class="mono" style="font-size:11.5px;color:var(--ink-400);"><?php echo (int) ($q['points'] ?? 0); ?> pt<?php echo (int) ($q['points'] ?? 0) !== 1 ? 's' : ''; ?></span>
+                <?php if (($q['correct_answer'] ?? null) !== null && ($q['correct_answer'] ?? '') !== ''): ?>
                   <span class="correct">&#10003; <?php echo e($q['correct_answer']); ?></span>
                 <?php endif; ?>
               </div>
@@ -113,20 +124,22 @@ require_once __DIR__ . '/inc/header.php';
               <tbody>
                 <?php foreach ($submissions as $s): ?>
                   <?php
-                    $pct = $s['percentage'];
+                    $pct = $s['percentage'] ?? null;
                     $pctTxt = $pct === null ? '—' : number_format($pct, 1) . '%';
-                    $cls = $s['passed'] === null ? 'tag-dim' : ($s['passed'] ? 'tag-pass' : 'tag-fail');
-                    $tagTxt = $s['passed'] === null ? 'n/s' : ($s['passed'] ? 'PASSED' : 'FAILED');
+                    $passed = $s['passed'] ?? null;
+                    $cls = $passed === null ? 'tag-dim' : ($passed ? 'tag-pass' : 'tag-fail');
+                    $tagTxt = $passed === null ? 'n/s' : ($passed ? 'PASSED' : 'FAILED');
+                    $submittedAt = $s['submitted_at'] ?? null;
                   ?>
                   <tr>
                     <td>
-                      <div><?php echo e(trim($s['first_name'] . ' ' . $s['last_name'])); ?></div>
+                      <div><?php echo e(trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? '')) ?: 'Unknown student'); ?></div>
                       <div style="font-size:11px;color:var(--ink-400);"><?php echo e($s['section'] ?? ''); ?></div>
                     </td>
-                    <td><span class="mono"><?php echo (int) $s['score']; ?> pts · <?php echo $pctTxt; ?></span></td>
+                    <td><span class="mono"><?php echo (int) ($s['score'] ?? 0); ?> pts · <?php echo $pctTxt; ?></span></td>
                     <td><span class="tag <?php echo $cls; ?>"><?php echo $tagTxt; ?></span></td>
-                    <td><span class="mono" style="font-size:12px;"><?php echo fmt_secs($s['time_used_secs']); ?></span></td>
-                    <td style="font-size:11.5px;color:var(--ink-400);"><?php echo e(date('M j, g:i', strtotime($s['submitted_at']))); ?></td>
+                    <td><span class="mono" style="font-size:12px;"><?php echo fmt_secs($s['time_used_secs'] ?? null); ?></span></td>
+                    <td style="font-size:11.5px;color:var(--ink-400);"><?php echo e(!empty($submittedAt) ? date('M j, g:i', strtotime((string) $submittedAt)) : '—'); ?></td>
                   </tr>
                 <?php endforeach; ?>
               </tbody>
@@ -245,8 +258,8 @@ require_once __DIR__ . '/inc/header.php';
   })();
   </script>
   <script>
-    window.SCHED_START = <?php echo json_encode($exam['start_time'] ? date('Y-m-d\TH:i', strtotime($exam['start_time'])) : ''); ?>;
-    window.SCHED_END = <?php echo json_encode($exam['end_time'] ? date('Y-m-d\TH:i', strtotime($exam['end_time'])) : ''); ?>;
+    window.SCHED_START = <?php echo admin_json_for_script($exam['start_time'] ? date('Y-m-d\TH:i', strtotime($exam['start_time'])) : ''); ?>;
+    window.SCHED_END = <?php echo admin_json_for_script($exam['end_time'] ? date('Y-m-d\TH:i', strtotime($exam['end_time'])) : ''); ?>;
   </script>
 <?php endif; ?>
 

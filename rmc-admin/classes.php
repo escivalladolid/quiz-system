@@ -19,15 +19,19 @@ $data = ['classes' => [], 'total' => 0, 'pages' => 1, 'page' => 1,
          'summary' => ['total' => 0, 'active' => 0, 'archived' => 0]];
 $teachers = [];
 
-$res = admin_api_request('GET', 'admin/classes.php?' . http_build_query($params), [], $admin['token']);
-if ($res['http_code'] === 200 && ($res['body']['success'] ?? false) === true) {
-    $data = array_merge($data, $res['body']['data']);
+$res = admin_api_request('GET', 'admin/classes.php?' . http_build_query($params), [], (string) ($admin['token'] ?? ''));
+if (admin_api_response_ok($res)) {
+    $data = admin_api_data($res, $data);
+    $data['classes'] = admin_array_rows($data['classes'] ?? null);
+    $data['summary'] = is_array($data['summary'] ?? null)
+        ? array_replace(['total' => 0, 'active' => 0, 'archived' => 0], $data['summary'])
+        : ['total' => 0, 'active' => 0, 'archived' => 0];
 } else {
     $db_online = false;
 }
-$res2 = admin_api_request('GET', 'admin/users.php?role=TEACHER&per_page=50', [], $admin['token']);
-if ($res2['http_code'] === 200 && ($res2['body']['success'] ?? false) === true) {
-    $teachers = $res2['body']['data']['users'] ?? [];
+$res2 = admin_api_request('GET', 'admin/users.php?role=TEACHER&per_page=50', [], (string) ($admin['token'] ?? ''));
+if (admin_api_response_ok($res2)) {
+    $teachers = admin_array_rows($res2['body']['data']['users'] ?? null);
 }
 
 $classes = $data['classes'];
@@ -68,8 +72,8 @@ require_once __DIR__ . '/inc/header.php';
   <select class="input" name="teacher_id" aria-label="Teacher">
     <option value="0">All teachers</option>
     <?php foreach ($teachers as $t): ?>
-      <option value="<?php echo (int) $t['user_id']; ?>" <?php echo $teacherId === (int) $t['user_id'] ? 'selected' : ''; ?>>
-        <?php echo e(trim($t['first_name'] . ' ' . $t['last_name'])); ?>
+      <option value="<?php echo (int) ($t['user_id'] ?? 0); ?>" <?php echo $teacherId === (int) ($t['user_id'] ?? 0) ? 'selected' : ''; ?>>
+        <?php echo e(trim(($t['first_name'] ?? '') . ' ' . ($t['last_name'] ?? ''))); ?>
       </option>
     <?php endforeach; ?>
   </select>
@@ -110,21 +114,22 @@ require_once __DIR__ . '/inc/header.php';
         <tbody>
           <?php foreach ($classes as $c): ?>
             <?php
-              $subject = e(trim($c['subject_name'] . ' · ' . $c['subject_code']));
-              $sub = e(trim($c['class_code'] . ' · ' . $c['block']));
+              $subject = e(trim(($c['subject_name'] ?? '') . ' · ' . ($c['subject_code'] ?? '')));
+              $sub = e(trim(($c['class_code'] ?? '') . ' · ' . ($c['block'] ?? '')));
               $teacher = trim(($c['teacher_first_name'] ?? '') . ' ' . ($c['teacher_last_name'] ?? ''));
-              $statusCls = $c['status'] === 'ACTIVE' ? 'tag-pass' : 'tag-dim';
-              $created = e(date('M j, Y', strtotime($c['created_at'])));
+              $status = strtoupper((string) ($c['status'] ?? ''));
+              $statusCls = $status === 'ACTIVE' ? 'tag-pass' : 'tag-dim';
+              $created = e(date('M j, Y', strtotime((string) ($c['created_at'] ?? ''))));
             ?>
-            <tr data-id="<?php echo (int) $c['class_id']; ?>" data-status="<?php echo e($c['status']); ?>">
+            <tr data-id="<?php echo (int) ($c['class_id'] ?? 0); ?>" data-status="<?php echo e($status); ?>">
               <td>
                 <div><?php echo $subject; ?></div>
                 <div style="font-size:11.5px;color:var(--ink-400);"><?php echo $sub; ?></div>
               </td>
               <td><?php echo $teacher ? e($teacher) : '<span style="color:var(--ink-400);">—</span>'; ?></td>
-              <td><span class="mono"><?php echo (int) $c['enrolled_count']; ?></span> students</td>
-              <td><span class="mono"><?php echo (int) $c['exam_count']; ?></span> exams</td>
-              <td><span class="tag <?php echo $statusCls; ?>"><?php echo e($c['status']); ?></span></td>
+              <td><span class="mono"><?php echo (int) ($c['enrolled_count'] ?? 0); ?></span> students</td>
+              <td><span class="mono"><?php echo (int) ($c['exam_count'] ?? 0); ?></span> exams</td>
+              <td><span class="tag <?php echo $statusCls; ?>"><?php echo e($status); ?></span></td>
               <td style="color:var(--ink-400);font-size:12px;"><?php echo $created; ?></td>
               <td class="actions-col">
                 <button class="row-action" type="button" data-act="roster" title="Manage roster">
@@ -133,8 +138,8 @@ require_once __DIR__ . '/inc/header.php';
                 <button class="row-action" type="button" data-act="edit" title="Edit">
                   <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="m11.3 2.9 1.8 1.8-7.6 7.6-2.5.7.7-2.5z"/><path d="M9.5 4.7l1.8 1.8"/></svg>
                 </button>
-                <button class="row-action <?php echo $c['status'] === 'ARCHIVED' ? '' : 'danger'; ?>" type="button" data-act="archive" title="<?php echo $c['status'] === 'ARCHIVED' ? 'Restore' : 'Archive'; ?>">
-                  <?php if ($c['status'] === 'ARCHIVED'): ?>
+                <button class="row-action <?php echo $status === 'ARCHIVED' ? '' : 'danger'; ?>" type="button" data-act="archive" title="<?php echo $status === 'ARCHIVED' ? 'Restore' : 'Archive'; ?>">
+                  <?php if ($status === 'ARCHIVED'): ?>
                     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 10.5 2 2 2-2"/><path d="M5.5 12.5v-6"/><path d="M5.5 4.5 2.5 6.5l3 2 3-2z"/></svg>
                   <?php else: ?>
                     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10l-.8 7H3.8L3 6z"/><path d="M6 6V4h4v2"/><path d="M2.4 3.6h11.2"/></svg>
@@ -181,7 +186,7 @@ require_once __DIR__ . '/inc/header.php';
           <select class="input" id="f_teacher" name="teacher_id" required>
             <option value="">Select teacher…</option>
             <?php foreach ($teachers as $t): ?>
-              <option value="<?php echo (int) $t['user_id']; ?>"><?php echo e(trim($t['first_name'] . ' ' . $t['last_name'])); ?></option>
+              <option value="<?php echo (int) ($t['user_id'] ?? 0); ?>"><?php echo e(trim(($t['first_name'] ?? '') . ' ' . ($t['last_name'] ?? ''))); ?></option>
             <?php endforeach; ?>
           </select>
         </div>
@@ -236,8 +241,8 @@ require_once __DIR__ . '/inc/header.php';
 </div>
 
 <script>
-window.CLASSES = <?php echo json_encode($classes); ?>;
-window.TEACHERS = <?php echo json_encode($teachers); ?>;
+window.CLASSES = <?php echo admin_json_for_script($classes); ?>;
+window.TEACHERS = <?php echo admin_json_for_script($teachers); ?>;
 </script>
 <script>
 (function () {

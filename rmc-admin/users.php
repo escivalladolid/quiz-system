@@ -3,7 +3,7 @@ require_once __DIR__ . '/inc/bootstrap.php';
 admin_require_login();
 
 $admin = $_SESSION['admin_user'];
-$self_id = (int) $admin['user_id'];
+$self_id = (int) ($admin['user_id'] ?? 0);
 
 $role    = strtoupper(trim($_GET['role'] ?? ''));
 $status  = strtoupper(trim($_GET['status'] ?? ''));
@@ -17,9 +17,10 @@ if ($search !== '') { $params['search'] = $search; }
 
 $db_online = true;
 $data = ['users' => [], 'total' => 0, 'pages' => 1, 'page' => 1, 'per_page' => 12];
-$res = admin_api_request('GET', 'admin/users.php?' . http_build_query($params), [], $admin['token']);
-if ($res['http_code'] === 200 && ($res['body']['success'] ?? false) === true) {
-    $data = array_merge($data, $res['body']['data']);
+$res = admin_api_request('GET', 'admin/users.php?' . http_build_query($params), [], (string) ($admin['token'] ?? ''));
+if (admin_api_response_ok($res)) {
+    $data = admin_api_data($res, $data);
+    $data['users'] = admin_array_rows($data['users'] ?? null);
 } else {
     $db_online = false;
 }
@@ -104,45 +105,49 @@ require_once __DIR__ . '/inc/header.php';
         <tbody>
           <?php foreach ($users as $u): ?>
             <?php
-              $fb = e(strtoupper(($u['first_name'][0] ?? 'S') . ($u['last_name'][0] ?? 'T')));
-              $name = e(trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')));
-              $roleCls = $u['role_name'] === 'ADMIN' ? 'tag-navy' : ($u['role_name'] === 'TEACHER' ? 'tag-royal' : 'tag-dim');
-              $statusCls = $u['status'] === 'ACTIVE' ? 'tag-pass' : ($u['status'] === 'BANNED' ? 'tag-fail' : 'tag-dim');
-              $stuInfo = $u['role_name'] === 'STUDENT'
+              $firstName = (string) ($u['first_name'] ?? '');
+              $lastName = (string) ($u['last_name'] ?? '');
+              $roleName = strtoupper((string) ($u['role_name'] ?? ''));
+              $status = strtoupper((string) ($u['status'] ?? ''));
+              $fb = e(strtoupper(($firstName[0] ?? 'S') . ($lastName[0] ?? 'T')));
+              $name = e(trim($firstName . ' ' . $lastName));
+              $roleCls = $roleName === 'ADMIN' ? 'tag-navy' : ($roleName === 'TEACHER' ? 'tag-royal' : 'tag-dim');
+              $statusCls = $status === 'ACTIVE' ? 'tag-pass' : ($status === 'BANNED' ? 'tag-fail' : 'tag-dim');
+              $stuInfo = $roleName === 'STUDENT'
                   ? e(trim(($u['student_id'] ?? '') . ' · ' . ($u['year_level'] ?? '') . ' · ' . ($u['section'] ?? ''), ' ·'))
                   : '<span style="color:var(--ink-400);">—</span>';
-              $created = e(date('M j, Y', strtotime($u['created_at'])));
+              $created = e(date('M j, Y', strtotime((string) ($u['created_at'] ?? ''))));
             ?>
-            <tr data-id="<?php echo (int) $u['user_id']; ?>" data-role="<?php echo e($u['role_name']); ?>" data-status="<?php echo e($u['status']); ?>">
+            <tr data-id="<?php echo (int) ($u['user_id'] ?? 0); ?>" data-role="<?php echo e($roleName); ?>" data-status="<?php echo e($status); ?>">
               <td class="check-col">
-                <input type="checkbox" class="row-check" value="<?php echo (int) $u['user_id']; ?>"
-                       <?php echo (int) $u['user_id'] === $self_id ? 'disabled title="This is you"' : ''; ?>>
+                <input type="checkbox" class="row-check" value="<?php echo (int) ($u['user_id'] ?? 0); ?>"
+                       <?php echo (int) ($u['user_id'] ?? 0) === $self_id ? 'disabled title="This is you"' : ''; ?>>
               </td>
               <td>
                 <div class="row-user">
                   <div class="row-avatar"><?php echo $fb; ?></div>
                   <div>
                     <div><?php echo $name; ?></div>
-                    <div style="font-size:11.5px;color:var(--ink-400);">@<?php echo e($u['username']); ?> · <?php echo e($u['email']); ?></div>
+                    <div style="font-size:11.5px;color:var(--ink-400);">@<?php echo e($u['username'] ?? ''); ?> · <?php echo e($u['email'] ?? ''); ?></div>
                   </div>
                 </div>
               </td>
-              <td><span class="tag <?php echo $roleCls; ?>"><?php echo e($u['role_name']); ?></span></td>
+              <td><span class="tag <?php echo $roleCls; ?>"><?php echo e($roleName); ?></span></td>
               <td><?php echo $stuInfo; ?></td>
-              <td><span class="tag <?php echo $statusCls; ?>"><?php echo e($u['status']); ?></span></td>
+              <td><span class="tag <?php echo $statusCls; ?>"><?php echo e($status); ?></span></td>
               <td style="color:var(--ink-400);font-size:12px;"><?php echo $created; ?></td>
               <td class="actions-col">
                 <button class="row-action" type="button" data-act="edit" title="Edit">
                   <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="m11.3 2.9 1.8 1.8-7.6 7.6-2.5.7.7-2.5z"/><path d="M9.5 4.7l1.8 1.8"/></svg>
                 </button>
-                <?php if ($u['status'] === 'ACTIVE'): ?>
+                <?php if ($status === 'ACTIVE'): ?>
                   <button class="row-action" type="button" data-act="suspend" title="Suspend">
                     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 4.5v7"/><path d="M10 4.5v7"/></svg>
                   </button>
                   <button class="row-action danger" type="button" data-act="ban" title="Ban">
                     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.4"/><path d="m4.8 4.8 6.4 6.4"/></svg>
                   </button>
-                <?php elseif ($u['status'] === 'INACTIVE'): ?>
+                <?php elseif ($status === 'INACTIVE'): ?>
                   <button class="row-action" type="button" data-act="activate" title="Activate">
                     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5.5 3.8 6 4.2-6 4.2z"/></svg>
                   </button>
@@ -239,7 +244,7 @@ require_once __DIR__ . '/inc/header.php';
 
 <script>
 window.RMC_SELF = <?php echo (int) $self_id; ?>;
-window.USERS = <?php echo json_encode($users); ?>;
+window.USERS = <?php echo admin_json_for_script($users); ?>;
 </script>
 <script>
 (function () {
@@ -249,7 +254,7 @@ window.USERS = <?php echo json_encode($users); ?>;
 
   var selfId = window.RMC_SELF;
   var usersById = {};
-  window.USERS.forEach(function (u) { usersById[u.user_id] = u; });
+  (window.USERS || []).forEach(function (u) { usersById[u.user_id] = u; });
 
   // ---------- modal helpers ----------
   function openModal(id) { document.getElementById(id).classList.add('open'); }

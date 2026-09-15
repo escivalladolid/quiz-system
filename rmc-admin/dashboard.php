@@ -20,28 +20,24 @@ $recent = [];
 $logs   = [];
 $users  = [];
 $classes = [];
+$dashboard_failures = [];
 
 $res = admin_api_request('GET', 'admin/stats.php', [], $token);
-if (($res['body']['success'] ?? false) === true) {
-    $data   = $res['body']['data'] ?? [];
-    $stats  = array_merge($stats, is_array($data['stats'] ?? null) ? $data['stats'] : []);
-    $recent = is_array($data['recent_submissions'] ?? null) ? $data['recent_submissions'] : [];
-}
+$data = admin_api_data($res, ['stats' => [], 'recent_submissions' => []], 'Statistics', $dashboard_failures);
+$stats = array_merge($stats, is_array($data['stats'] ?? null) ? $data['stats'] : []);
+$recent = admin_array_rows($data['recent_submissions'] ?? null);
 
 $res = admin_api_request('GET', 'admin/logs.php?per_page=30', [], $token);
-if (($res['body']['success'] ?? false) === true) {
-    $logs = is_array(($res['body']['data']['logs'] ?? null)) ? $res['body']['data']['logs'] : [];
-}
+$data = admin_api_data($res, ['logs' => []], 'Activity log', $dashboard_failures);
+$logs = admin_array_rows($data['logs'] ?? null);
 
 $res = admin_api_request('GET', 'admin/users.php?per_page=50', [], $token);
-if (($res['body']['success'] ?? false) === true) {
-    $users = is_array(($res['body']['data']['users'] ?? null)) ? $res['body']['data']['users'] : [];
-}
+$data = admin_api_data($res, ['users' => []], 'Users', $dashboard_failures);
+$users = admin_array_rows($data['users'] ?? null);
 
 $res = admin_api_request('GET', 'admin/reports.php', [], $token);
-if (($res['body']['success'] ?? false) === true) {
-    $classes = is_array(($res['body']['data']['classes'] ?? null)) ? $res['body']['data']['classes'] : [];
-}
+$data = admin_api_data($res, ['classes' => []], 'Reports', $dashboard_failures);
+$classes = admin_array_rows($data['classes'] ?? null);
 
 $totalUsers    = (int) ($stats['total_users'] ?? 0);
 $totalStudents = (int) ($stats['total_students'] ?? 0);
@@ -139,47 +135,41 @@ $teachers = [];
 $classesAll = [];
 $classStatus = ['total' => 0, 'active' => 0, 'archived' => 0];
 $res = admin_api_request('GET', 'admin/users.php?role=TEACHER&per_page=100', [], $token);
-if (($res['body']['success'] ?? false) === true) {
-    $teachers = is_array($res['body']['data']['users'] ?? null) ? $res['body']['data']['users'] : [];
-}
+$data = admin_api_data($res, ['users' => []], 'Teachers', $dashboard_failures);
+$teachers = admin_array_rows($data['users'] ?? null);
 $res = admin_api_request('GET', 'admin/classes.php?per_page=100', [], $token);
-if (($res['body']['success'] ?? false) === true) {
-    $d = $res['body']['data'] ?? [];
-    $classesAll = is_array($d['classes'] ?? null) ? $d['classes'] : [];
-    foreach (($d['summary'] ?? []) as $k => $v) { if (isset($classStatus[$k])) { $classStatus[$k] = (int) $v; } }
-}
+$d = admin_api_data($res, ['classes' => [], 'summary' => []], 'Classes', $dashboard_failures);
+$classesAll = admin_array_rows($d['classes'] ?? null);
+foreach (is_array($d['summary'] ?? null) ? $d['summary'] : [] as $k => $v) { if (isset($classStatus[$k])) { $classStatus[$k] = (int) $v; } }
 
 /* ---------- Assessments view (exams) ---------- */
 $examsAll = [];
 $examStatusCounts = ['DRAFT' => 0, 'SCHEDULED' => 0, 'LIVE' => 0, 'CLOSED' => 0, 'ARCHIVED' => 0];
 $classesOption = [];
 $res = admin_api_request('GET', 'admin/exams.php?per_page=100', [], $token);
-if (($res['body']['success'] ?? false) === true) {
-    $d = $res['body']['data'] ?? [];
-    $examsAll = is_array($d['exams'] ?? null) ? $d['exams'] : [];
-    foreach (($d['summary'] ?? []) as $k => $v) { if (isset($examStatusCounts[$k])) { $examStatusCounts[$k] = (int) $v; } }
-}
+$d = admin_api_data($res, ['exams' => [], 'summary' => []], 'Assessments', $dashboard_failures);
+$examsAll = admin_array_rows($d['exams'] ?? null);
+foreach (is_array($d['summary'] ?? null) ? $d['summary'] : [] as $k => $v) { if (isset($examStatusCounts[$k])) { $examStatusCounts[$k] = (int) $v; } }
 foreach ($classesAll as $cc) {
-    $label = trim(($cc['subject_code'] ?? '') . ' · ' . ($cc['class_code'] ?? '') . ($cc['block'] ? ' · ' . $cc['block'] : ''));
-    $classesOption[] = ['class_id' => (int) $cc['class_id'], 'label' => $label];
+    $label = trim(($cc['subject_code'] ?? '') . ' · ' . ($cc['class_code'] ?? '') . (!empty($cc['block']) ? ' · ' . $cc['block'] : ''));
+    $classesOption[] = ['class_id' => (int) ($cc['class_id'] ?? 0), 'label' => $label];
 }
 
 /* ---------- Logs view (audit trail) ---------- */
 $auditLogs = [];
 $auditSummary = [];
 $res = admin_api_request('GET', 'admin/logs.php?per_page=200', [], $token);
-if (($res['body']['success'] ?? false) === true) {
-    $auditLogs = is_array($res['body']['data']['logs'] ?? null) ? $res['body']['data']['logs'] : [];
-    $auditSummary = is_array($res['body']['data']['summary'] ?? null) ? $res['body']['data']['summary'] : [];
-}
+$d = admin_api_data($res, ['logs' => [], 'summary' => []], 'System logs', $dashboard_failures);
+$auditLogs = admin_array_rows($d['logs'] ?? null);
+$auditSummary = admin_array_rows($d['summary'] ?? null);
 
 /* ---------- Maintenance view (health + sessions) ---------- */
 $maint = ['db_now' => null, 'tz_offset_seconds' => 0, 'table_counts' => [], 'sessions' => [],
           'active_sessions' => 0, 'php_version' => PHP_VERSION];
 $res = admin_api_request('GET', 'admin/maintenance.php', [], $token);
-if (($res['body']['success'] ?? false) === true) {
-    $maint = array_merge($maint, $res['body']['data'] ?? []);
-}
+$maint = admin_api_data($res, $maint, 'Maintenance', $dashboard_failures);
+$maint['table_counts'] = is_array($maint['table_counts'] ?? null) ? $maint['table_counts'] : [];
+$maint['sessions'] = admin_array_rows($maint['sessions'] ?? null);
 $maintCounts = $maint['table_counts'];
 $maintSessions = $maint['sessions'];
 $apiBase = rtrim(admin_api_base(), '/');
@@ -194,14 +184,15 @@ function rmc_remain(string $expires): string {
 /* ---------- Full reports ---------- */
 $reportMeta = ['overall' => null, 'classes' => [], 'weakest' => [], 'daily' => []];
 $res = admin_api_request('GET', 'admin/reports.php', [], $token);
-if (($res['body']['success'] ?? false) === true) {
-    $reportMeta = array_merge($reportMeta, $res['body']['data'] ?? []);
-}
-$overall  = $reportMeta['overall'];
+$reportMeta = admin_api_data($res, $reportMeta, 'Reports', $dashboard_failures);
+$reportMeta['classes'] = admin_array_rows($reportMeta['classes'] ?? null);
+$reportMeta['weakest'] = admin_array_rows($reportMeta['weakest'] ?? null);
+$reportMeta['daily'] = admin_array_rows($reportMeta['daily'] ?? null);
+$overall  = is_array($reportMeta['overall'] ?? null) ? $reportMeta['overall'] : null;
 $weakest  = $reportMeta['weakest'];
 $daily    = $reportMeta['daily'];
 $maxDaily = 1;
-foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
+foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -351,6 +342,8 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
   .admin-dropdown-item.logout{color:var(--danger);}
   .admin-dropdown-item.logout svg{color:var(--danger);}
   .admin-dropdown-item.logout:hover{background:var(--danger-bg);}
+  .admin-logout-form{margin:0;}
+  .admin-logout-form .admin-dropdown-item{width:100%;border:0;background:transparent;text-align:left;font:inherit;}
 
   .content{padding:26px 32px 60px 32px;}
   .view{display:none;}
@@ -539,6 +532,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     line-height:1.4;}
   .flash-banner.alert-ok{background:#e5f4ec;color:#1d8a4e;border:1px solid #bfe3cf;}
   .flash-banner.alert-error{background:rgba(196,69,60,0.08);color:#b3411e;border:1px solid rgba(179,52,31,0.3);}
+  .dashboard-alert{margin:18px 18px 0;padding:11px 14px;border-radius:9px;background:var(--warn-bg);border:1px solid rgba(179,84,30,0.28);color:var(--warn);font-size:13px;line-height:1.45;}
   @keyframes flashFadeOut{0%{opacity:1;transform:translateY(0)}70%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-8px)}}
   .flash-banner.auto-hide{animation:flashFadeOut 5s ease forwards;}
 
@@ -756,6 +750,11 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
     <?php admin_flash_display(); ?>
   </div>
   <?php endif; ?>
+  <?php if (!empty($dashboard_failures)): ?>
+  <div class="dashboard-alert" role="status">
+    Some dashboard sections could not load: <?php echo e(implode(', ', $dashboard_failures)); ?>. Please refresh and check the backend connection.
+  </div>
+  <?php endif; ?>
 
   <!-- ================= SIDEBAR ================= -->
   <aside class="sidebar" id="sidebar">
@@ -837,10 +836,13 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Log Out
-              </a>
+              <form class="admin-logout-form" method="post" action="<?= e(admin_url('logout')) ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(admin_csrf_token()) ?>">
+                <button class="admin-dropdown-item logout" type="submit">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Log Out
+                </button>
+              </form>
             </div>
           </div>
         </div>
@@ -937,10 +939,13 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Log Out
-              </a>
+              <form class="admin-logout-form" method="post" action="<?= e(admin_url('logout')) ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(admin_csrf_token()) ?>">
+                <button class="admin-dropdown-item logout" type="submit">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Log Out
+                </button>
+              </form>
             </div>
           </div>
         </div>
@@ -993,18 +998,19 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
                   $roleCls  = $roleName === 'STUDENT' ? 'role-student' : ($roleName === 'TEACHER' ? 'role-teacher' : 'role-admin');
                   $status   = strtoupper((string) ($u['status'] ?? 'ACTIVE'));
                   $statusCls = $status === 'ACTIVE' ? 'status-active' : 'status-inactive';
-                  $idDisp   = $u['student_id'] !== '' && $u['student_id'] !== null
-                              ? $u['student_id']
-                              : ($roleName === 'ADMIN' ? 'ADM-' . str_pad((string) $u['user_id'], 3, '0', STR_PAD_LEFT) : '@' . $u['username']);
+                  $studentId = $u['student_id'] ?? null;
+                  $idDisp   = $studentId !== '' && $studentId !== null
+                              ? $studentId
+                              : ($roleName === 'ADMIN' ? 'ADM-' . str_pad((string) ($u['user_id'] ?? 0), 3, '0', STR_PAD_LEFT) : '@' . ($u['username'] ?? ''));
                   $assign   = $roleName === 'STUDENT'
                               ? trim(($u['year_level'] ?? '') . ' – ' . ($u['section'] ?? ''), ' –')
                               : ($roleName === 'TEACHER' ? 'Teaching faculty' : 'Office of the Registrar');
                   $created  = date('M j, Y', strtotime((string) ($u['created_at'] ?? 'now')));
                 ?>
-                <tr data-id="<?php echo (int) $u['user_id']; ?>" data-role="<?php echo e($roleName); ?>" data-status="<?php echo e($status); ?>" data-name="<?php echo e(strtolower(trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')))); ?>">
+                <tr data-id="<?php echo (int) ($u['user_id'] ?? 0); ?>" data-role="<?php echo e($roleName); ?>" data-status="<?php echo e($status); ?>" data-name="<?php echo e(strtolower(trim(($u['first_name'] ?? '') . ' ' . ($u['last_name'] ?? '')))); ?>">
                   <td class="check-col">
-                    <input type="checkbox" class="row-check" value="<?php echo (int) $u['user_id']; ?>"
-                           <?php echo (int) $u['user_id'] === $self_id ? 'disabled title="This is you"' : ''; ?>>
+                    <input type="checkbox" class="row-check" value="<?php echo (int) ($u['user_id'] ?? 0); ?>"
+                           <?php echo (int) ($u['user_id'] ?? 0) === $self_id ? 'disabled title="This is you"' : ''; ?>>
                   </td>
                   <td class="name-cell">
                     <div class="row-user">
@@ -1105,10 +1111,13 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Log Out
-              </a>
+              <form class="admin-logout-form" method="post" action="<?= e(admin_url('logout')) ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(admin_csrf_token()) ?>">
+                <button class="admin-dropdown-item logout" type="submit">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Log Out
+                </button>
+              </form>
             </div>
           </div>
         </div>
@@ -1154,7 +1163,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
                   $teacher = trim(($c['teacher_first_name'] ?? '') . ' ' . ($c['teacher_last_name'] ?? ''));
                   $created = e(date('M j, Y', strtotime($c['created_at'] ?? 'now')));
                 ?>
-                <tr data-id="<?php echo (int) $c['class_id']; ?>" data-status="<?php echo e($c['status'] ?? 'ACTIVE'); ?>" data-name="<?php echo e(strtolower(trim(($c['subject_name'] ?? '') . ' ' . ($c['class_code'] ?? '') . ' ' . ($c['block'] ?? '') . ' ' . $teacher))); ?>">
+                <tr data-id="<?php echo (int) ($c['class_id'] ?? 0); ?>" data-status="<?php echo e($c['status'] ?? 'ACTIVE'); ?>" data-name="<?php echo e(strtolower(trim(($c['subject_name'] ?? '') . ' ' . ($c['class_code'] ?? '') . ' ' . ($c['block'] ?? '') . ' ' . $teacher))); ?>">
                   <td style="min-width:200px;">
                     <div><strong><?php echo $subject; ?></strong></div>
                     <div style="font-size:11.5px;color:var(--ink-soft);"><?php echo $sub; ?></div>
@@ -1198,7 +1207,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </div>
           <div>
-          <h1>Assessment Oversight</h1>
+          <h1>Assessments</h1>
           <div class="page-sub">Exams, scheduling, force-close, and per-assessment drill-down</div>
         </div>
         </div>
@@ -1211,10 +1220,13 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Log Out
-              </a>
+              <form class="admin-logout-form" method="post" action="<?= e(admin_url('logout')) ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(admin_csrf_token()) ?>">
+                <button class="admin-dropdown-item logout" type="submit">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Log Out
+                </button>
+              </form>
             </div>
           </div>
         </div>
@@ -1253,16 +1265,16 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             <tbody>
               <?php foreach ($examsAll as $e): ?>
                 <?php
-                  $schedule = ($e['start_time'] && $e['end_time'])
+                  $schedule = (!empty($e['start_time']) && !empty($e['end_time']))
                       ? e(date('M j, g:i A', strtotime($e['start_time'])) . ' → ' . date('g:i A', strtotime($e['end_time'])))
                       : '<span style="color:var(--ink-soft);">not scheduled</span>';
                   $avg = ((int) ($e['submission_count'] ?? 0) > 0 && ($e['avg_pct'] ?? null) !== null)
-                      ? number_format((float) $e['avg_pct'], 1) . '%'
+                      ? number_format((float) ($e['avg_pct'] ?? 0), 1) . '%'
                       : '—';
                   $st = $e['status'] ?? 'DRAFT';
                   $tagCls = $st === 'LIVE' ? 'tag-pass' : ($st === 'SCHEDULED' ? 'tag-royal' : ($st === 'CLOSED' ? 'tag-navy' : ($st === 'ARCHIVED' ? 'tag-arch' : 'tag-dim')));
                 ?>
-                <tr data-id="<?php echo (int) $e['exam_id']; ?>" data-status="<?php echo e($st); ?>" data-name="<?php echo e(strtolower(trim(($e['exam_name'] ?? '') . ' ' . ($e['subject_code'] ?? '') . ' ' . ($e['subject_name'] ?? '') . ' ' . ($e['block'] ?? '')))); ?>">
+                <tr data-id="<?php echo (int) ($e['exam_id'] ?? 0); ?>" data-status="<?php echo e($st); ?>" data-name="<?php echo e(strtolower(trim(($e['exam_name'] ?? '') . ' ' . ($e['subject_code'] ?? '') . ' ' . ($e['subject_name'] ?? '') . ' ' . ($e['block'] ?? '')))); ?>">
                   <td style="min-width:190px;">
                     <div><strong><?php echo e($e['exam_name'] ?? ''); ?></strong></div>
                     <div style="font-size:11.5px;color:var(--ink-soft);"><?php echo e(trim(($e['subject_code'] ?? '') . ' · ' . ($e['block'] ?? ''))); ?></div>
@@ -1331,10 +1343,13 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Log Out
-              </a>
+              <form class="admin-logout-form" method="post" action="<?= e(admin_url('logout')) ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(admin_csrf_token()) ?>">
+                <button class="admin-dropdown-item logout" type="submit">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Log Out
+                </button>
+              </form>
             </div>
           </div>
         </div>
@@ -1345,7 +1360,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
           <div class="toolbar-left" style="gap:8px;">
             <span class="filter-chip log-chip active" data-filter="All">All</span>
             <?php foreach ($auditSummary as $s): ?>
-              <span class="filter-chip log-chip" data-filter="<?php echo e($s['action']); ?>"><?php echo e($s['action']); ?> · <?php echo (int) $s['cnt']; ?></span>
+              <span class="filter-chip log-chip" data-filter="<?php echo e($s['action'] ?? ''); ?>"><?php echo e($s['action'] ?? ''); ?> · <?php echo (int) ($s['cnt'] ?? 0); ?></span>
             <?php endforeach; ?>
           </div>
           <div class="toolbar-left" style="margin-top:8px;flex:1;justify-content:flex-end;">
@@ -1377,11 +1392,11 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
                   $actor = trim(($l['first_name'] ?? '') . ' ' . ($l['last_name'] ?? ''));
                   $actor = $actor !== '' ? $actor : ($l['username'] ?? 'system');
                 ?>
-                <tr data-action="<?php echo e($logAction); ?>" data-when="<?php echo e(date('Y-m-d', strtotime($l['created_at']))); ?>" data-search="<?php echo e(strtolower($actor . ' ' . ($l['description'] ?? '') . ' ' . ($l['username'] ?? ''))); ?>">
-                  <td class="mono" style="white-space:nowrap;font-size:12px;color:var(--ink-soft);"><?php echo e(date('M j, Y  g:i A', strtotime($l['created_at']))); ?></td>
+                <tr data-action="<?php echo e($logAction); ?>" data-when="<?php echo e(date('Y-m-d', strtotime($l['created_at'] ?? ''))); ?>" data-search="<?php echo e(strtolower($actor . ' ' . ($l['description'] ?? '') . ' ' . ($l['username'] ?? ''))); ?>">
+                  <td class="mono" style="white-space:nowrap;font-size:12px;color:var(--ink-soft);"><?php echo e(date('M j, Y  g:i A', strtotime($l['created_at'] ?? ''))); ?></td>
                   <td>
                     <div><strong style="font-weight:600;"><?php echo e($actor); ?></strong></div>
-                    <?php if ($l['username']): ?><div style="font-size:11px;color:var(--ink-soft);">@<?php echo e($l['username']); ?></div><?php endif; ?>
+                    <?php if (!empty($l['username'])): ?><div style="font-size:11px;color:var(--ink-soft);">@<?php echo e($l['username']); ?></div><?php endif; ?>
                   </td>
                   <td><span class="tag tag-royal"><?php echo e($logAction); ?></span></td>
                   <td style="color:var(--ink-soft);max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo e($l['description'] ?? ''); ?>"><?php echo e($l['description'] ?? ''); ?></td>
@@ -1418,10 +1433,13 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Log Out
-              </a>
+              <form class="admin-logout-form" method="post" action="<?= e(admin_url('logout')) ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(admin_csrf_token()) ?>">
+                <button class="admin-dropdown-item logout" type="submit">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Log Out
+                </button>
+              </form>
             </div>
           </div>
         </div>
@@ -1431,23 +1449,23 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
         <div class="stat-row" style="margin-top:4px;">
           <div class="stat-card">
             <div class="stat-label">Overall Average</div>
-            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? number_format((float) $overall['avg_pct'], 1) . '%' : '—'; ?></div>
-            <div class="stat-delta flat">across <?php echo $overall ? (int) $overall['exam_count'] : 0; ?> assessments</div>
+            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? number_format((float) ($overall['avg_pct'] ?? 0), 1) . '%' : '—'; ?></div>
+            <div class="stat-delta flat">across <?php echo $overall ? (int) ($overall['exam_count'] ?? 0) : 0; ?> assessments</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Pass Rate</div>
-            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? number_format((float) $overall['pass_rate'], 1) . '%' : '—'; ?></div>
-            <div class="stat-delta flat"><?php echo $overall ? (int) $overall['pass_count'] . ' of ' . (int) $overall['submission_count'] . ' submissions passed' : ''; ?></div>
+            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? number_format((float) ($overall['pass_rate'] ?? 0), 1) . '%' : '—'; ?></div>
+            <div class="stat-delta flat"><?php echo $overall ? (int) ($overall['pass_count'] ?? 0) . ' of ' . (int) ($overall['submission_count'] ?? 0) . ' submissions passed' : ''; ?></div>
           </div>
           <div class="stat-card accent">
             <div class="stat-label">Submissions</div>
-            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? number_format((int) $overall['submission_count']) : '—'; ?></div>
-            <div class="stat-delta flat"><?php echo $overall ? number_format((int) $overall['attempts_users']) . ' distinct students' : ''; ?></div>
+            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? number_format((int) ($overall['submission_count'] ?? 0)) : '—'; ?></div>
+            <div class="stat-delta flat"><?php echo $overall ? number_format((int) ($overall['attempts_users'] ?? 0)) . ' distinct students' : ''; ?></div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Exam Footprint</div>
-            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? (int) $overall['exam_count'] : '—'; ?></div>
-            <div class="stat-delta flat"><?php echo $overall ? (int) $overall['active_classes'] . ' active classes' : ''; ?></div>
+            <div class="stat-value" style="font-size:22px;"><?php echo $overall ? (int) ($overall['exam_count'] ?? 0) : '—'; ?></div>
+            <div class="stat-delta flat"><?php echo $overall ? (int) ($overall['active_classes'] ?? 0) . ' active classes' : ''; ?></div>
           </div>
         </div>
 
@@ -1533,13 +1551,13 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
           <?php else: ?>
             <div class="chart">
               <?php foreach ($daily as $d): ?>
-                <?php $h = ((int) $d['count'] / $maxDaily) * 100; ?>
-                <div class="chart-bar <?php echo (int) $d['count'] === 0 ? 'zero' : ''; ?>" style="height:<?php echo max(3, $h); ?>%;" data-count="<?php echo (int) $d['count']; ?>"></div>
+                <?php $dayCount = (int) ($d['count'] ?? 0); $h = ($dayCount / $maxDaily) * 100; ?>
+                <div class="chart-bar <?php echo $dayCount === 0 ? 'zero' : ''; ?>" style="height:<?php echo max(3, $h); ?>%;" data-count="<?php echo $dayCount; ?>"></div>
               <?php endforeach; ?>
             </div>
             <div class="chart-x">
               <?php foreach ($daily as $d): ?>
-                <span><?php echo e(date('d', strtotime($d['date']))); ?></span>
+                <span><?php echo e(date('d', strtotime($d['date'] ?? ''))); ?></span>
               <?php endforeach; ?>
             </div>
           <?php endif; ?>
@@ -1552,12 +1570,12 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
           <?php else: ?>
             <?php foreach ($weakest as $w): ?>
               <div class="weak-row">
-                <span class="w-avg" title="average score"><?php echo number_format((float) $w['avg_pct'], 1); ?>%</span>
+                <span class="w-avg" title="average score"><?php echo number_format((float) ($w['avg_pct'] ?? 0), 1); ?>%</span>
                 <div class="w-body">
-                  <div class="w-name"><?php echo e($w['exam_name']); ?></div>
-                  <div class="w-sub"><?php echo e(trim(($w['subject_code'] ?? '') . ' · ' . ($w['block'] ?? ''))); ?> · <?php echo (int) $w['submission_count']; ?> sub(s) · pass <?php echo (int) $w['passing_score']; ?>%</div>
+                  <div class="w-name"><?php echo e($w['exam_name'] ?? 'Unnamed assessment'); ?></div>
+                  <div class="w-sub"><?php echo e(trim(($w['subject_code'] ?? '') . ' · ' . ($w['block'] ?? ''))); ?> · <?php echo (int) ($w['submission_count'] ?? 0); ?> sub(s) · pass <?php echo (int) ($w['passing_score'] ?? 0); ?>%</div>
                 </div>
-                <span class="tag <?php echo (float) $w['pass_rate'] >= 60 ? 'tag-pass' : ((float) $w['pass_rate'] >= 40 ? 'tag-royal' : 'tag-fail'); ?>"><?php echo number_format((float) $w['pass_rate'], 0); ?>%</span>
+                <span class="tag <?php echo (float) ($w['pass_rate'] ?? 0) >= 60 ? 'tag-pass' : ((float) ($w['pass_rate'] ?? 0) >= 40 ? 'tag-royal' : 'tag-fail'); ?>"><?php echo number_format((float) ($w['pass_rate'] ?? 0), 0); ?>%</span>
               </div>
             <?php endforeach; ?>
           <?php endif; ?>
@@ -1586,10 +1604,13 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="admin-dropdown">
               <div class="admin-dropdown-divider"></div>
-              <a class="admin-dropdown-item logout" href="<?= e(admin_url('logout')) ?>">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Log Out
-              </a>
+              <form class="admin-logout-form" method="post" action="<?= e(admin_url('logout')) ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(admin_csrf_token()) ?>">
+                <button class="admin-dropdown-item logout" type="submit">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Log Out
+                </button>
+              </form>
             </div>
           </div>
         </div>
@@ -1604,7 +1625,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
           </div>
           <div class="health-tile">
             <div class="lbl">Timezone offset</div>
-            <div class="num" style="font-size:15px;"><?php echo sprintf('%+d:%02d', intdiv((int) $maint['tz_offset_seconds'], 3600), intdiv(abs((int) $maint['tz_offset_seconds']), 60) % 60); ?></div>
+              <div class="num" style="font-size:15px;"><?php echo sprintf('%+d:%02d', intdiv((int) ($maint['tz_offset_seconds'] ?? 0), 3600), intdiv(abs((int) ($maint['tz_offset_seconds'] ?? 0)), 60) % 60); ?></div>
             <div class="lbl" style="margin-top:6px;text-transform:none;">server now: <?php echo e(date('M j, Y g:i A')); ?></div>
           </div>
           <div class="health-tile">
@@ -1641,7 +1662,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
 
           <aside style="min-width:0;">
             <div class="panel">
-              <div class="panel-head"><h2>Active Sessions</h2><span class="panel-note"><?php echo (int) $maint['active_sessions']; ?> total</span></div>
+              <div class="panel-head"><h2>Active Sessions</h2><span class="panel-note"><?php echo (int) ($maint['active_sessions'] ?? count($maintSessions)); ?> total</span></div>
               <div class="table-scroll">
                 <table>
                   <thead><tr><th>User</th><th>Role</th><th>Expires</th><th></th></tr></thead>
@@ -1704,7 +1725,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
             </div>
             <div class="soft-tip">
               <h4>Defaults &amp; security</h4>
-              <p>Seeded admin: <span class="mono">admin</span> / <span class="mono">admin123</span> (change it via User Management). Suspending or banning a user signs out every one of their sessions immediately.</p>
+              <p>The initial administrator account must be rotated after setup. Change it from <b>User Management</b>. Suspending or banning a user signs out every one of their sessions immediately.</p>
             </div>
             <div class="soft-tip">
               <h4>Scoring</h4>
@@ -1842,7 +1863,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
           <select class="input" id="c_teacher" name="teacher_id" required>
             <option value="">Select teacher…</option>
             <?php foreach ($teachers as $t): ?>
-              <option value="<?php echo (int) $t['user_id']; ?>"><?php echo e(trim(($t['first_name'] ?? '') . ' ' . ($t['last_name'] ?? ''))); ?></option>
+              <option value="<?php echo (int) ($t['user_id'] ?? 0); ?>"><?php echo e(trim(($t['first_name'] ?? '') . ' ' . ($t['last_name'] ?? ''))); ?></option>
             <?php endforeach; ?>
           </select>
         </div>
@@ -1939,15 +1960,15 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
 </div>
 
 <script>
-  var RMC_ADMIN = <?php echo json_encode([
+  var RMC_ADMIN = <?php echo admin_json_for_script([
       'name' => $adminShort,
       'selfId' => (int) ($admin['user_id'] ?? 0),
       'csrf' => admin_csrf_token(),
   ]); ?>;
-  window.USERS   = <?php echo json_encode($users); ?>;
-  window.CLASSES = <?php echo json_encode($classesAll); ?>;
-  window.TEACHERS = <?php echo json_encode($teachers); ?>;
-  window.EXAMS   = <?php echo json_encode($examsAll); ?>;
+  window.USERS   = <?php echo admin_json_for_script($users); ?>;
+  window.CLASSES = <?php echo admin_json_for_script($classesAll); ?>;
+  window.TEACHERS = <?php echo admin_json_for_script($teachers); ?>;
+  window.EXAMS   = <?php echo admin_json_for_script($examsAll); ?>;
 
   function toggleSidebar(){
     document.getElementById('sidebar').classList.toggle('open');
@@ -1957,10 +1978,15 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
   document.querySelectorAll('.nav-item').forEach(function(item){
     item.addEventListener('click', function(){
       if (item.getAttribute('data-soon')) return;
+      var target = document.getElementById('view-' + item.dataset.view);
+      if (!target) {
+        console.error('Admin navigation target is missing:', item.dataset.view);
+        return;
+      }
       document.querySelectorAll('.nav-item').forEach(function(i){ i.classList.remove('active'); });
       document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
       item.classList.add('active');
-      document.getElementById('view-' + item.dataset.view).classList.add('active');
+      target.classList.add('active');
       document.getElementById('sidebar').classList.remove('open');
       document.getElementById('sidebar-overlay').classList.remove('open');
       window.scrollTo(0, 0);

@@ -8,9 +8,11 @@ $db_online = true;
 $data = ['db_now' => null, 'tz_offset_seconds' => 0, 'table_counts' => [], 'sessions' => [],
          'active_sessions' => 0, 'php_version' => PHP_VERSION];
 
-$res = admin_api_request('GET', 'admin/maintenance.php', [], $admin['token']);
-if ($res['http_code'] === 200 && ($res['body']['success'] ?? false) === true) {
-    $data = array_merge($data, $res['body']['data']);
+$res = admin_api_request('GET', 'admin/maintenance.php', [], (string) ($admin['token'] ?? ''));
+if (admin_api_response_ok($res)) {
+    $data = admin_api_data($res, $data);
+    $data['table_counts'] = is_array($data['table_counts'] ?? null) ? $data['table_counts'] : [];
+    $data['sessions'] = admin_array_rows($data['sessions'] ?? null);
 } else {
     $db_online = false;
 }
@@ -27,7 +29,7 @@ function human_remaining(string $expires): string {
     return ($h > 0 ? "{$h}h " : '') . "{$m}m";
 }
 
-$page_title = 'Maintenance';
+$page_title = 'System Maintenance';
 $active_nav = 'maintenance';
 require_once __DIR__ . '/inc/header.php';
 ?>
@@ -41,11 +43,11 @@ require_once __DIR__ . '/inc/header.php';
     <div class="stat-tile">
       <div class="lbl">Database</div>
       <div class="num" style="font-size:15px;"><?php echo $db_online ? 'ONLINE' : 'OFFLINE'; ?></div>
-      <div class="lbl" style="margin-top:6px;"><?php echo $db_online ? e('now: ' . $data['db_now']) : 'backend/DB not reachable'; ?></div>
+      <div class="lbl" style="margin-top:6px;"><?php echo $db_online ? e('now: ' . (string) ($data['db_now'] ?? '—')) : 'backend/DB not reachable'; ?></div>
     </div>
     <div class="stat-tile">
       <div class="lbl">Timezone offset</div>
-      <div class="num" style="font-size:15px;"><?php echo $db_online ? sprintf('%+dh', (int) ($data['tz_offset_seconds'] / 3600)) . ' ' . sprintf('%02d:%02d', intdiv((int) $data['tz_offset_seconds'], 3600), (intdiv(abs((int) $data['tz_offset_seconds']), 60) % 60)) : '—'; ?></div>
+      <div class="num" style="font-size:15px;"><?php $tzOffset = (int) ($data['tz_offset_seconds'] ?? 0); echo $db_online ? sprintf('%+dh', (int) ($tzOffset / 3600)) . ' ' . sprintf('%02d:%02d', intdiv($tzOffset, 3600), (intdiv(abs($tzOffset), 60) % 60)) : '—'; ?></div>
       <div class="lbl" style="margin-top:6px;">server now: <?php echo e(date('M j, Y g:i A')); ?></div>
     </div>
     <div class="stat-tile">
@@ -90,7 +92,7 @@ require_once __DIR__ . '/inc/header.php';
 
   <aside class="rail">
     <section class="panel">
-      <div class="panel-head"><h3>Active Sessions</h3><span class="muted"><?php echo (int) $data['active_sessions']; ?> total</span></div>
+      <div class="panel-head"><h3>Active Sessions</h3><span class="muted"><?php echo (int) ($data['active_sessions'] ?? count($sessions)); ?> total</span></div>
       <div class="table-wrap">
         <?php if (empty($sessions)): ?>
           <div class="empty-state"><span class="big">&#128273;</span>No sessions right now.</div>
@@ -99,17 +101,17 @@ require_once __DIR__ . '/inc/header.php';
             <thead><tr><th>User</th><th>Role</th><th>Expires</th><th></th></tr></thead>
             <tbody>
               <?php foreach ($sessions as $s): ?>
-                <?php $own = $admin['token'] === $s['session_id']; ?>
+                <?php $own = (string) ($admin['token'] ?? '') === (string) ($s['session_id'] ?? ''); ?>
                 <tr>
                   <td>
-                    <div><?php echo e(trim($s['first_name'] . ' ' . $s['last_name'])); ?> <?php if ($own): ?><span class="tag tag-royal" style="padding:0 5px;font-size:9px;">YOU</span><?php endif; ?></div>
-                    <div style="font-size:11px;color:var(--ink-400);">@<?php echo e($s['username']); ?></div>
+                    <div><?php echo e(trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? '')) ?: 'Unknown user'); ?> <?php if ($own): ?><span class="tag tag-royal" style="padding:0 5px;font-size:9px;">YOU</span><?php endif; ?></div>
+                    <div style="font-size:11px;color:var(--ink-400);">@<?php echo e($s['username'] ?? ''); ?></div>
                   </td>
-                  <td><span class="tag tag-navy"><?php echo e($s['role_name']); ?></span></td>
-                  <td class="mono" style="font-size:12px;"><?php echo e(human_remaining($s['expires_at'])); ?></td>
+                  <td><span class="tag tag-navy"><?php echo e($s['role_name'] ?? ''); ?></span></td>
+                  <td class="mono" style="font-size:12px;"><?php echo e(human_remaining((string) ($s['expires_at'] ?? ''))); ?></td>
                   <td>
                     <?php if (!$own): ?>
-                      <button class="btn-filter" data-kill="<?php echo e($s['session_id']); ?>" data-user="<?php echo e(trim($s['first_name'] . ' ' . $s['last_name'])); ?>">End</button>
+                      <button class="btn-filter" data-kill="<?php echo e($s['session_id'] ?? ''); ?>" data-user="<?php echo e(trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''))); ?>">End</button>
                     <?php endif; ?>
                   </td>
                 </tr>
@@ -135,7 +137,7 @@ require_once __DIR__ . '/inc/header.php';
     </div>
     <div class="soft-tip">
       <h4>Defaults &amp; security</h4>
-      <p>Seeded admin: <span class="mono">admin</span> / <span class="mono">admin123</span> (change it via Users &raquo; it uses the same password policy, 8+ chars with a digit). Suspending or banning a user signs out every one of their sessions immediately.</p>
+      <p>The initial administrator account must be rotated after setup. Change it from <b>Users</b>; the same password policy applies (8+ characters with a digit). Suspending or banning a user signs out every one of their sessions immediately.</p>
     </div>
     <div class="soft-tip">
       <h4>Scoring</h4>

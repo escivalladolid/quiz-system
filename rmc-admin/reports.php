@@ -7,21 +7,24 @@ $admin = $_SESSION['admin_user'];
 $db_online = true;
 $data = ['overall' => null, 'classes' => [], 'weakest' => [], 'daily' => []];
 
-$res = admin_api_request('GET', 'admin/reports.php', [], $admin['token']);
-if ($res['http_code'] === 200 && ($res['body']['success'] ?? false) === true) {
-    $data = $res['body']['data'];
+$res = admin_api_request('GET', 'admin/reports.php', [], (string) ($admin['token'] ?? ''));
+if (admin_api_response_ok($res)) {
+    $data = admin_api_data($res, $data);
+    $data['classes'] = admin_array_rows($data['classes'] ?? null);
+    $data['weakest'] = admin_array_rows($data['weakest'] ?? null);
+    $data['daily'] = admin_array_rows($data['daily'] ?? null);
 } else {
     $db_online = false;
 }
 
-$overall = $data['overall'];
-$classes = $data['classes'];
-$weakest = $data['weakest'];
-$daily   = $data['daily'];
+$overall = is_array($data['overall'] ?? null) ? $data['overall'] : null;
+$classes = admin_array_rows($data['classes'] ?? null);
+$weakest = admin_array_rows($data['weakest'] ?? null);
+$daily   = admin_array_rows($data['daily'] ?? null);
 $maxDaily = 1;
-foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) $d['count']); }
+foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
 
-$page_title = 'Reports & Analytics';
+$page_title = 'System-Wide Reports';
 $active_nav = 'reports';
 require_once __DIR__ . '/inc/header.php';
 ?>
@@ -32,23 +35,23 @@ require_once __DIR__ . '/inc/header.php';
 <div class="stat-grid" style="grid-template-columns:repeat(4,1fr);">
   <div class="stat-card">
     <div class="stat-label">Overall Average</div>
-    <div class="stat-value"><?php echo $overall ? number_format($overall['avg_pct'], 1) . '%' : '—'; ?></div>
-    <div class="stat-sub">across <?php echo $overall ? (int) $overall['exam_count'] : 0; ?> assessments</div>
+    <div class="stat-value"><?php echo $overall ? number_format((float) ($overall['avg_pct'] ?? 0), 1) . '%' : '—'; ?></div>
+    <div class="stat-sub">across <?php echo $overall ? (int) ($overall['exam_count'] ?? 0) : 0; ?> assessments</div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Pass Rate</div>
-    <div class="stat-value"><?php echo $overall ? number_format($overall['pass_rate'], 1) . '%' : '—'; ?></div>
-    <div class="stat-sub"><?php echo $overall ? (int) $overall['pass_count'] . ' of ' . (int) $overall['submission_count'] . ' submissions passed' : ''; ?></div>
+    <div class="stat-value"><?php echo $overall ? number_format((float) ($overall['pass_rate'] ?? 0), 1) . '%' : '—'; ?></div>
+    <div class="stat-sub"><?php echo $overall ? (int) ($overall['pass_count'] ?? 0) . ' of ' . (int) ($overall['submission_count'] ?? 0) . ' submissions passed' : ''; ?></div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Submissions</div>
-    <div class="stat-value"><?php echo $overall ? number_format($overall['submission_count']) : '—'; ?></div>
-    <div class="stat-sub"><?php echo $overall ? number_format($overall['attempts_users']) . ' distinct students' : ''; ?></div>
+    <div class="stat-value"><?php echo $overall ? number_format((int) ($overall['submission_count'] ?? 0)) : '—'; ?></div>
+    <div class="stat-sub"><?php echo $overall ? number_format((int) ($overall['attempts_users'] ?? 0)) . ' distinct students' : ''; ?></div>
   </div>
   <div class="stat-card">
     <div class="stat-label">Exam Footprint</div>
-    <div class="stat-value"><?php echo $overall ? (int) $overall['exam_count'] : '—'; ?></div>
-    <div class="stat-sub"><?php echo $overall ? (int) $overall['active_classes'] . ' active classes' : ''; ?></div>
+    <div class="stat-value"><?php echo $overall ? (int) ($overall['exam_count'] ?? 0) : '—'; ?></div>
+    <div class="stat-sub"><?php echo $overall ? (int) ($overall['active_classes'] ?? 0) . ' active classes' : ''; ?></div>
   </div>
 </div>
 
@@ -73,23 +76,23 @@ require_once __DIR__ . '/inc/header.php';
               <?php foreach ($classes as $c): ?>
                 <tr>
                   <td>
-                    <div><?php echo e(trim($c['subject_name'] . ' · ' . $c['subject_code'])); ?></div>
-                    <div style="font-size:11.5px;color:var(--ink-400);"><?php echo e(trim($c['block'] . ' · ' . $c['exam_count'] . ' exam(s)')); ?></div>
+                    <div><?php echo e(trim(($c['subject_name'] ?? '') . ' · ' . ($c['subject_code'] ?? ''))); ?></div>
+                    <div style="font-size:11.5px;color:var(--ink-400);"><?php echo e(trim(($c['block'] ?? '') . ' · ' . ($c['exam_count'] ?? 0) . ' exam(s)')); ?></div>
                   </td>
                   <td>
                     <div style="display:flex;align-items:center;gap:10px;">
-                      <div class="progress-track" style="flex:1;"><div class="progress-fill" style="width:<?php echo min(100, (float) $c['avg_pct']); ?>%;"></div></div>
-                      <span class="mono" style="font-size:12.5px;"><?php echo number_format((float) $c['avg_pct'], 1); ?>%</span>
+                      <div class="progress-track" style="flex:1;"><div class="progress-fill" style="width:<?php echo min(100, (float) ($c['avg_pct'] ?? 0)); ?>%;"></div></div>
+                      <span class="mono" style="font-size:12.5px;"><?php echo number_format((float) ($c['avg_pct'] ?? 0), 1); ?>%</span>
                     </div>
                   </td>
-                  <td><span class="mono"><?php echo (int) $c['submission_count']; ?></span></td>
+                  <td><span class="mono"><?php echo (int) ($c['submission_count'] ?? 0); ?></span></td>
                   <td>
-                    <?php if ((int) $c['pass_rate'] >= 60): ?>
-                      <span class="tag tag-pass"><?php echo number_format((float) $c['pass_rate'], 1); ?>%</span>
-                    <?php elseif ((int) $c['pass_rate'] >= 40): ?>
-                      <span class="tag tag-royal"><?php echo number_format((float) $c['pass_rate'], 1); ?>%</span>
+                    <?php if ((int) ($c['pass_rate'] ?? 0) >= 60): ?>
+                      <span class="tag tag-pass"><?php echo number_format((float) ($c['pass_rate'] ?? 0), 1); ?>%</span>
+                    <?php elseif ((int) ($c['pass_rate'] ?? 0) >= 40): ?>
+                      <span class="tag tag-royal"><?php echo number_format((float) ($c['pass_rate'] ?? 0), 1); ?>%</span>
                     <?php else: ?>
-                      <span class="tag tag-fail"><?php echo number_format((float) $c['pass_rate'], 1); ?>%</span>
+                      <span class="tag tag-fail"><?php echo number_format((float) ($c['pass_rate'] ?? 0), 1); ?>%</span>
                     <?php endif; ?>
                   </td>
                 </tr>
@@ -107,13 +110,13 @@ require_once __DIR__ . '/inc/header.php';
       <?php else: ?>
         <div class="chart">
           <?php foreach ($daily as $d): ?>
-            <?php $h = ((int) $d['count'] / $maxDaily) * 100; ?>
-            <div class="chart-bar <?php echo (int) $d['count'] === 0 ? 'zero' : ''; ?>" style="height:<?php echo max(3, $h); ?>%;" data-count="<?php echo (int) $d['count']; ?>"></div>
+            <?php $dayCount = (int) ($d['count'] ?? 0); $h = ($dayCount / $maxDaily) * 100; ?>
+            <div class="chart-bar <?php echo $dayCount === 0 ? 'zero' : ''; ?>" style="height:<?php echo max(3, $h); ?>%;" data-count="<?php echo $dayCount; ?>"></div>
           <?php endforeach; ?>
         </div>
         <div class="chart-x">
           <?php foreach ($daily as $d): ?>
-            <span><?php echo e(date('d', strtotime($d['date']))); ?></span>
+            <span><?php echo e(date('d', strtotime((string) ($d['date'] ?? '')))); ?></span>
           <?php endforeach; ?>
         </div>
       <?php endif; ?>
@@ -128,12 +131,12 @@ require_once __DIR__ . '/inc/header.php';
       <?php else: ?>
         <?php foreach ($weakest as $w): ?>
           <div class="weak-row">
-            <span class="w-avg" title="average score"><?php echo number_format((float) $w['avg_pct'], 1); ?>%</span>
+            <span class="w-avg" title="average score"><?php echo number_format((float) ($w['avg_pct'] ?? 0), 1); ?>%</span>
             <div class="w-body">
-              <div class="w-name"><?php echo e($w['exam_name']); ?></div>
-              <div class="w-sub"><?php echo e(trim(($w['subject_code'] ?? '') . ' · ' . ($w['block'] ?? ''))); ?> · <?php echo (int) $w['submission_count']; ?> sub(s) · pass <?php echo (int) $w['passing_score']; ?>%</div>
+              <div class="w-name"><?php echo e($w['exam_name'] ?? 'Unnamed assessment'); ?></div>
+              <div class="w-sub"><?php echo e(trim(($w['subject_code'] ?? '') . ' · ' . ($w['block'] ?? ''))); ?> · <?php echo (int) ($w['submission_count'] ?? 0); ?> sub(s) · pass <?php echo (int) ($w['passing_score'] ?? 0); ?>%</div>
             </div>
-            <span class="tag <?php echo (float) $w['pass_rate'] >= 60 ? 'tag-pass' : ((float) $w['pass_rate'] >= 40 ? 'tag-royal' : 'tag-fail'); ?>"><?php echo number_format((float) $w['pass_rate'], 0); ?>%</span>
+            <span class="tag <?php echo (float) ($w['pass_rate'] ?? 0) >= 60 ? 'tag-pass' : ((float) ($w['pass_rate'] ?? 0) >= 40 ? 'tag-royal' : 'tag-fail'); ?>"><?php echo number_format((float) ($w['pass_rate'] ?? 0), 0); ?>%</span>
           </div>
         <?php endforeach; ?>
       <?php endif; ?>

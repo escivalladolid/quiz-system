@@ -19,15 +19,19 @@ $data = ['exams' => [], 'total' => 0, 'pages' => 1, 'page' => 1,
          'summary' => ['DRAFT' => 0, 'SCHEDULED' => 0, 'LIVE' => 0, 'CLOSED' => 0, 'ARCHIVED' => 0]];
 $classesOption = [];
 
-$res = admin_api_request('GET', 'admin/exams.php?' . http_build_query($params), [], $admin['token']);
-if ($res['http_code'] === 200 && ($res['body']['success'] ?? false) === true) {
-    $data = array_merge($data, $res['body']['data']);
+$res = admin_api_request('GET', 'admin/exams.php?' . http_build_query($params), [], (string) ($admin['token'] ?? ''));
+if (admin_api_response_ok($res)) {
+    $data = admin_api_data($res, $data);
+    $data['exams'] = admin_array_rows($data['exams'] ?? null);
+    $data['summary'] = is_array($data['summary'] ?? null)
+        ? array_replace(['DRAFT' => 0, 'SCHEDULED' => 0, 'LIVE' => 0, 'CLOSED' => 0, 'ARCHIVED' => 0], $data['summary'])
+        : ['DRAFT' => 0, 'SCHEDULED' => 0, 'LIVE' => 0, 'CLOSED' => 0, 'ARCHIVED' => 0];
 } else {
     $db_online = false;
 }
-$res2 = admin_api_request('GET', 'admin/classes.php?per_page=50', [], $admin['token']);
-if ($res2['http_code'] === 200 && ($res2['body']['success'] ?? false) === true) {
-    $classesOption = $res2['body']['data']['classes'] ?? [];
+$res2 = admin_api_request('GET', 'admin/classes.php?per_page=50', [], (string) ($admin['token'] ?? ''));
+if (admin_api_response_ok($res2)) {
+    $classesOption = admin_array_rows($res2['body']['data']['classes'] ?? null);
 }
 
 $exams  = $data['exams'];
@@ -45,7 +49,7 @@ function qs(array $extra): string {
     return http_build_query($all);
 }
 
-$page_title = 'Assessment Oversight';
+$page_title = 'Assessments';
 $active_nav = 'assessments';
 require_once __DIR__ . '/inc/header.php';
 ?>
@@ -80,8 +84,8 @@ require_once __DIR__ . '/inc/header.php';
   <select class="input" name="class_id" aria-label="Class">
     <option value="0">All classes</option>
     <?php foreach ($classesOption as $c): ?>
-      <option value="<?php echo (int) $c['class_id']; ?>" <?php echo $classId === (int) $c['class_id'] ? 'selected' : ''; ?>>
-        <?php echo e(trim($c['subject_code'] . ' · ' . $c['class_code'] . ($c['block'] ? ' · ' . $c['block'] : ''))); ?>
+      <option value="<?php echo (int) ($c['class_id'] ?? 0); ?>" <?php echo $classId === (int) ($c['class_id'] ?? 0) ? 'selected' : ''; ?>>
+        <?php echo e(trim(($c['subject_code'] ?? '') . ' · ' . ($c['class_code'] ?? '') . (!empty($c['block']) ? ' · ' . $c['block'] : ''))); ?>
       </option>
     <?php endforeach; ?>
   </select>
@@ -117,39 +121,42 @@ require_once __DIR__ . '/inc/header.php';
         <tbody>
           <?php foreach ($exams as $e): ?>
             <?php
-              $schedule = ($e['start_time'] && $e['end_time'])
-                  ? e(date('M j, g:i A', strtotime($e['start_time'])) . ' → ' . date('g:i A', strtotime($e['end_time'])))
+              $startTime = (string) ($e['start_time'] ?? '');
+              $endTime = (string) ($e['end_time'] ?? '');
+              $status = strtoupper((string) ($e['status'] ?? ''));
+              $schedule = ($startTime !== '' && $endTime !== '')
+                  ? e(date('M j, g:i A', strtotime($startTime)) . ' → ' . date('g:i A', strtotime($endTime)))
                   : '<span style="color:var(--ink-400);">not scheduled</span>';
-              $avg = ((int) $e['submission_count'] > 0 && $e['avg_pct'] !== null)
-                  ? number_format((float) $e['avg_pct'], 1) . '%'
+              $avg = ((int) ($e['submission_count'] ?? 0) > 0 && ($e['avg_pct'] ?? null) !== null)
+                  ? number_format((float) ($e['avg_pct'] ?? 0), 1) . '%'
                   : '—';
-              $tagCls = $STATUS_TAGS[$e['status']] ?? 'tag-dim';
+              $tagCls = $STATUS_TAGS[$status] ?? 'tag-dim';
             ?>
-            <tr data-id="<?php echo (int) $e['exam_id']; ?>" data-status="<?php echo e($e['status']); ?>">
+            <tr data-id="<?php echo (int) ($e['exam_id'] ?? 0); ?>" data-status="<?php echo e($status); ?>">
               <td>
-                <div><?php echo e($e['exam_name']); ?></div>
-                <div style="font-size:11.5px;color:var(--ink-400);"><?php echo e($e['subject_code'] . ' · ' . $e['block']); ?></div>
+                <div><?php echo e($e['exam_name'] ?? 'Unnamed assessment'); ?></div>
+                <div style="font-size:11.5px;color:var(--ink-400);"><?php echo e(($e['subject_code'] ?? '') . ' · ' . ($e['block'] ?? '')); ?></div>
               </td>
-              <td><?php echo e($e['subject_name']); ?></td>
+              <td><?php echo e($e['subject_name'] ?? ''); ?></td>
               <td style="font-size:12px;"><?php echo $schedule; ?></td>
               <td>
-                <span class="mono"><?php echo (int) $e['question_count']; ?></span> q · <span class="mono"><?php echo (int) $e['points_count']; ?></span> pts<br>
-                <span style="font-size:11px;color:var(--ink-400);">pass <?php echo (int) $e['passing_score']; ?>%</span>
+                <span class="mono"><?php echo (int) ($e['question_count'] ?? 0); ?></span> q · <span class="mono"><?php echo (int) ($e['points_count'] ?? 0); ?></span> pts<br>
+                <span style="font-size:11px;color:var(--ink-400);">pass <?php echo (int) ($e['passing_score'] ?? 0); ?>%</span>
               </td>
               <td>
-                <span class="mono"><?php echo number_format((int) $e['submission_count']); ?></span> · avg <span class="mono"><?php echo $avg; ?></span>
+                <span class="mono"><?php echo number_format((int) ($e['submission_count'] ?? 0)); ?></span> · avg <span class="mono"><?php echo $avg; ?></span>
               </td>
-              <td><span class="tag <?php echo $tagCls; ?>"><?php echo e($e['status']); ?></span></td>
+              <td><span class="tag <?php echo $tagCls; ?>"><?php echo e($status); ?></span></td>
               <td class="actions-col">
-                <a class="row-action" style="text-decoration:none;" href="exam_detail.php?id=<?php echo (int) $e['exam_id']; ?>" title="Review">
+                <a class="row-action" style="text-decoration:none;" href="exam_detail.php?id=<?php echo (int) ($e['exam_id'] ?? 0); ?>" title="Review">
                   <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 8S4 3.8 8 3.8 14.2 8 14.2 8 12 12.2 8 12.2 1.8 8 1.8 8z"/><circle cx="8" cy="8" r="2"/></svg>
                 </a>
-                <?php if ($e['status'] === 'LIVE'): ?>
+                <?php if ($status === 'LIVE'): ?>
                   <button class="row-action danger" type="button" data-act="force_close" title="Force close">
                     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.4"/><path d="m4.8 4.8 6.4 6.4"/></svg>
                   </button>
                 <?php endif; ?>
-                <?php if ($e['status'] !== 'ARCHIVED'): ?>
+                <?php if ($status !== 'ARCHIVED'): ?>
                   <button class="row-action" type="button" data-act="archive" title="Archive">
                     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10l-.8 7H3.8L3 6z"/><path d="M6 6V4h4v2"/><path d="M2.4 3.6h11.2"/></svg>
                   </button>
