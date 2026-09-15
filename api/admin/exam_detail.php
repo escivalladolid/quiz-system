@@ -20,6 +20,7 @@ if ($exam_id <= 0) {
 try {
     $stmt = $pdo->prepare(
         "SELECT e.*, c.subject_name, c.subject_code, c.block,
+                (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.exam_id) AS question_count,
                 (SELECT COALESCE(SUM(q.points), 0) FROM questions q WHERE q.exam_id = e.exam_id) AS points_count
          FROM exams e JOIN classes c ON c.class_id = e.class_id
          WHERE e.exam_id = ?"

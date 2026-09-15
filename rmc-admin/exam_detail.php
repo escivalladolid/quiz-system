@@ -33,6 +33,7 @@ if (is_array($exam)) {
 }
 
 $STATUS_TAGS = ['DRAFT' => 'tag-dim', 'SCHEDULED' => 'tag-royal', 'LIVE' => 'tag-pass', 'CLOSED' => 'tag-navy', 'ARCHIVED' => 'tag-arch'];
+$question_count = count($questions);
 
 function fmt_secs($secs): string {
     if ($secs === null || $secs === '') { return '—'; }
@@ -81,7 +82,7 @@ require_once __DIR__ . '/inc/header.php';
   <div class="chips">
     <div class="chip">Duration <b><?php echo (int) $exam['duration_minutes']; ?> min</b></div>
     <div class="chip">Passing <b><?php echo (int) $exam['passing_score']; ?>%</b></div>
-    <div class="chip">Questions <b><?php echo (int) $exam['question_count']; ?></b></div>
+    <div class="chip">Questions <b><?php echo $question_count; ?></b></div>
     <div class="chip">Points <b><?php echo (int) $exam['points_count']; ?></b></div>
     <div class="chip">Window <b><?php echo ($exam['start_time'] && $exam['end_time']) ? e(date('M j, g:i A', strtotime($exam['start_time'])) . ' → ' . date('M j, g:i A', strtotime($exam['end_time']))) : 'not scheduled'; ?></b></div>
     <?php if ($exam['is_closed']): ?><div class="chip">Closed at <b><?php echo $exam['closed_at'] ? e(date('M j, g:i A', strtotime($exam['closed_at']))) : '—'; ?></b></div><?php endif; ?>
