@@ -44,6 +44,12 @@ RewriteCond %{REQUEST_URI} ^(/(?:[^/]+/)*)admin/?$
 RewriteRule ^admin/?$ %{ENV:ADMIN_PUBLIC_ORIGIN}%1admin/login [R=302,L]
 RewriteCond %{REQUEST_URI} ^(/(?:[^/]+/)*)admin/(?:login|dashboard|logout)/$
 RewriteRule ^admin/(login|dashboard|logout)/$ %{ENV:ADMIN_PUBLIC_ORIGIN}%1admin/$1 [R=308,L]
+# Normalize legacy module-file URLs before the internal rewrite below. Keep
+# non-GET requests internal so form/API payloads are never redirected.
+RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
+RewriteCond %{THE_REQUEST} \s/+[^?\ ]*(?:rmc-admin|admin)/(?:users|classes|assessments|reports|logs|maintenance|exam_detail)\.php(?:[?\ ]|$) [NC]
+RewriteCond %{REQUEST_URI} ^(/(?:[^/]+/)*)(?:rmc-admin|admin)/(users|classes|assessments|reports|logs|maintenance|exam_detail)\.php$
+RewriteRule ^(?:rmc-admin|admin)/(users|classes|assessments|reports|logs|maintenance|exam_detail)\.php$ %{ENV:ADMIN_PUBLIC_ORIGIN}%1admin/$1 [R=302,L,NE]
 RewriteRule ^admin/(login|dashboard|logout|ajax)(?:\.php)?$ rmc-admin/$1.php [END]
 RewriteRule ^admin/(users|classes|assessments|reports|logs|maintenance|exam_detail)(?:\.php)?/?$ rmc-admin/$1.php [END]
 # Catch-all: any other admin/*.php page (users, classes, assessments, reports, logs, maintenance, exam_detail).
