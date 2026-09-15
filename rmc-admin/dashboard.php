@@ -1090,6 +1090,8 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
 
       </div>
 
+    </div>
+
     <!-- ============ CLASS MANAGEMENT VIEW ============ -->
     <div class="view" id="view-classes">
       <div class="topbar">
