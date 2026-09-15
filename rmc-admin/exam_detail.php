@@ -49,7 +49,7 @@ require_once __DIR__ . '/inc/header.php';
   <div class="notice bad"><b>Live data unavailable</b> — the backend/database is not reachable right now.</div>
 <?php endif; ?>
 
-<a class="back-link" href="assessments.php">
+<a class="back-link" href="<?php echo e(admin_url('assessments')); ?>">
   <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5 5 8l4.5 4.5"/></svg>
   Back to Assessments
 </a>

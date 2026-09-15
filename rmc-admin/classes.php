@@ -68,7 +68,7 @@ require_once __DIR__ . '/inc/header.php';
   </button>
 </div>
 
-<form class="filter-bar" method="get" action="classes.php">
+<form class="filter-bar" method="get" action="<?php echo e(admin_url('classes')); ?>">
   <select class="input" name="teacher_id" aria-label="Teacher">
     <option value="0">All teachers</option>
     <?php foreach ($teachers as $t): ?>
@@ -85,7 +85,7 @@ require_once __DIR__ . '/inc/header.php';
   <input class="input" type="search" name="search" value="<?php echo e($search); ?>" placeholder="Search subject, code, block…">
   <button class="btn-filter" type="submit">Apply</button>
   <?php if ($status !== '' || $teacherId > 0 || $search !== ''): ?>
-    <a class="btn-filter" href="classes.php" style="text-decoration:none;">Clear</a>
+    <a class="btn-filter" href="<?php echo e(admin_url('classes')); ?>" style="text-decoration:none;">Clear</a>
   <?php endif; ?>
 </form>
 
@@ -155,15 +155,15 @@ require_once __DIR__ . '/inc/header.php';
 
   <?php if ($pages > 1): ?>
     <div class="pagination">
-      <a class="pg <?php echo $page <= 1 ? 'disabled' : ''; ?>" href="<?php echo e($page > 1 ? 'classes.php?' . qs(['page' => $page - 1]) : '#'); ?>">&laquo;</a>
+      <a class="pg <?php echo $page <= 1 ? 'disabled' : ''; ?>" href="<?php echo e($page > 1 ? admin_url('classes') . '?' . qs(['page' => $page - 1]) : '#'); ?>">&laquo;</a>
       <?php for ($p = 1; $p <= $pages; $p++): ?>
         <?php if ($p === $page): ?>
           <span class="pg cur"><?php echo $p; ?></span>
         <?php else: ?>
-          <a class="pg" href="<?php echo e('classes.php?' . qs(['page' => $p])); ?>"><?php echo $p; ?></a>
+          <a class="pg" href="<?php echo e(admin_url('classes') . '?' . qs(['page' => $p])); ?>"><?php echo $p; ?></a>
         <?php endif; ?>
       <?php endfor; ?>
-      <a class="pg <?php echo $page >= $pages ? 'disabled' : ''; ?>" href="<?php echo e($page < $pages ? 'classes.php?' . qs(['page' => $page + 1]) : '#'); ?>">&raquo;</a>
+      <a class="pg <?php echo $page >= $pages ? 'disabled' : ''; ?>" href="<?php echo e($page < $pages ? admin_url('classes') . '?' . qs(['page' => $page + 1]) : '#'); ?>">&raquo;</a>
     </div>
   <?php endif; ?>
 </section>

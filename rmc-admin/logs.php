@@ -61,10 +61,10 @@ require_once __DIR__ . '/inc/header.php';
 
 <?php if (!empty($summary)): ?>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
-    <a href="logs.php" class="chip" style="text-decoration:none;">All · <?php echo (int) array_sum(array_column($summary, 'cnt')); ?></a>
+    <a href="<?php echo e(admin_url('logs')); ?>" class="chip" style="text-decoration:none;">All · <?php echo (int) array_sum(array_column($summary, 'cnt')); ?></a>
           <?php foreach ($summary as $s): ?>
       <?php $summaryAction = strtoupper((string) ($s['action'] ?? '')); $activeChip = ($action === $summaryAction); ?>
-      <a href="<?php echo e('logs.php?' . http_build_query(array_filter([
+      <a href="<?php echo e(admin_url('logs') . '?' . http_build_query(array_filter([
           'action' => $summaryAction, 'user_id' => $userId > 0 ? $userId : '',
           'search' => $search, 'from' => $from, 'to' => $to
       ], function ($v) { return $v !== '' && $v !== null; }))); ?>"
@@ -75,13 +75,13 @@ require_once __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
-<form class="filter-bar" method="get" action="logs.php">
+<form class="filter-bar" method="get" action="<?php echo e(admin_url('logs')); ?>">
   <input class="input" type="search" name="search" value="<?php echo e($search); ?>" placeholder="Search actor or description…">
   <input class="input" type="date" name="from" value="<?php echo e($from); ?>" aria-label="From date" style="width:170px;">
   <input class="input" type="date" name="to" value="<?php echo e($to); ?>" aria-label="To date" style="width:170px;">
   <button class="btn-filter" type="submit">Apply</button>
   <?php if ($action !== '' || $userId > 0 || $search !== '' || $from !== '' || $to !== ''): ?>
-    <a class="btn-filter" href="logs.php" style="text-decoration:none;">Clear</a>
+    <a class="btn-filter" href="<?php echo e(admin_url('logs')); ?>" style="text-decoration:none;">Clear</a>
   <?php endif; ?>
 </form>
 
@@ -134,15 +134,15 @@ require_once __DIR__ . '/inc/header.php';
 
   <?php if ($pages > 1): ?>
     <div class="pagination">
-      <a class="pg <?php echo $page <= 1 ? 'disabled' : ''; ?>" href="<?php echo e($page > 1 ? 'logs.php?' . qs(['page' => $page - 1]) : '#'); ?>">&laquo;</a>
+      <a class="pg <?php echo $page <= 1 ? 'disabled' : ''; ?>" href="<?php echo e($page > 1 ? admin_url('logs') . '?' . qs(['page' => $page - 1]) : '#'); ?>">&laquo;</a>
       <?php for ($p = 1; $p <= $pages; $p++): ?>
         <?php if ($p === $page): ?>
           <span class="pg cur"><?php echo $p; ?></span>
         <?php else: ?>
-          <a class="pg" href="<?php echo e('logs.php?' . qs(['page' => $p])); ?>"><?php echo $p; ?></a>
+          <a class="pg" href="<?php echo e(admin_url('logs') . '?' . qs(['page' => $p])); ?>"><?php echo $p; ?></a>
         <?php endif; ?>
       <?php endfor; ?>
-      <a class="pg <?php echo $page >= $pages ? 'disabled' : ''; ?>" href="<?php echo e($page < $pages ? 'logs.php?' . qs(['page' => $page + 1]) : '#'); ?>">&raquo;</a>
+      <a class="pg <?php echo $page >= $pages ? 'disabled' : ''; ?>" href="<?php echo e($page < $pages ? admin_url('logs') . '?' . qs(['page' => $page + 1]) : '#'); ?>">&raquo;</a>
     </div>
   <?php endif; ?>
 </section>

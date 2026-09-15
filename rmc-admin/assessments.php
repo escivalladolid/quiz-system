@@ -70,7 +70,7 @@ require_once __DIR__ . '/inc/header.php';
       $chipParams = ['status' => $st];
       if ($classId > 0) { $chipParams['class_id'] = $classId; }
       if ($search !== '') { $chipParams['search'] = $search; }
-      $chipHref = 'assessments.php?' . http_build_query($chipParams);
+      $chipHref = admin_url('assessments') . '?' . http_build_query($chipParams);
       $activeChip = $status === $st;
     ?>
     <a href="<?php echo e($chipHref); ?>" class="status-chip <?php echo $STATUS_TAGS[$st]; ?>"
@@ -80,7 +80,7 @@ require_once __DIR__ . '/inc/header.php';
   <?php endforeach; ?>
 </div>
 
-<form class="filter-bar" method="get" action="assessments.php">
+<form class="filter-bar" method="get" action="<?php echo e(admin_url('assessments')); ?>">
   <select class="input" name="class_id" aria-label="Class">
     <option value="0">All classes</option>
     <?php foreach ($classesOption as $c): ?>
@@ -92,7 +92,7 @@ require_once __DIR__ . '/inc/header.php';
   <input class="input" type="search" name="search" value="<?php echo e($search); ?>" placeholder="Search exam or subject…">
   <button class="btn-filter" type="submit">Apply</button>
   <?php if ($status !== '' || $classId > 0 || $search !== ''): ?>
-    <a class="btn-filter" href="assessments.php" style="text-decoration:none;">Clear</a>
+    <a class="btn-filter" href="<?php echo e(admin_url('assessments')); ?>" style="text-decoration:none;">Clear</a>
   <?php endif; ?>
 </form>
 
@@ -148,7 +148,7 @@ require_once __DIR__ . '/inc/header.php';
               </td>
               <td><span class="tag <?php echo $tagCls; ?>"><?php echo e($status); ?></span></td>
               <td class="actions-col">
-                <a class="row-action" style="text-decoration:none;" href="exam_detail.php?id=<?php echo (int) ($e['exam_id'] ?? 0); ?>" title="Review">
+                <a class="row-action" style="text-decoration:none;" href="<?php echo e(admin_url('exam_detail')); ?>?id=<?php echo (int) ($e['exam_id'] ?? 0); ?>" title="Review">
                   <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 8S4 3.8 8 3.8 14.2 8 14.2 8 12 12.2 8 12.2 1.8 8 1.8 8z"/><circle cx="8" cy="8" r="2"/></svg>
                 </a>
                 <?php if ($status === 'LIVE'): ?>
@@ -171,15 +171,15 @@ require_once __DIR__ . '/inc/header.php';
 
   <?php if ($pages > 1): ?>
     <div class="pagination">
-      <a class="pg <?php echo $page <= 1 ? 'disabled' : ''; ?>" href="<?php echo e($page > 1 ? 'assessments.php?' . qs(['page' => $page - 1]) : '#'); ?>">&laquo;</a>
+      <a class="pg <?php echo $page <= 1 ? 'disabled' : ''; ?>" href="<?php echo e($page > 1 ? admin_url('assessments') . '?' . qs(['page' => $page - 1]) : '#'); ?>">&laquo;</a>
       <?php for ($p = 1; $p <= $pages; $p++): ?>
         <?php if ($p === $page): ?>
           <span class="pg cur"><?php echo $p; ?></span>
         <?php else: ?>
-          <a class="pg" href="<?php echo e('assessments.php?' . qs(['page' => $p])); ?>"><?php echo $p; ?></a>
+          <a class="pg" href="<?php echo e(admin_url('assessments') . '?' . qs(['page' => $p])); ?>"><?php echo $p; ?></a>
         <?php endif; ?>
       <?php endfor; ?>
-      <a class="pg <?php echo $page >= $pages ? 'disabled' : ''; ?>" href="<?php echo e($page < $pages ? 'assessments.php?' . qs(['page' => $page + 1]) : '#'); ?>">&raquo;</a>
+      <a class="pg <?php echo $page >= $pages ? 'disabled' : ''; ?>" href="<?php echo e($page < $pages ? admin_url('assessments') . '?' . qs(['page' => $page + 1]) : '#'); ?>">&raquo;</a>
     </div>
   <?php endif; ?>
 </section>

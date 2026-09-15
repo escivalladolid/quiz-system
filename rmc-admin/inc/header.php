@@ -121,7 +121,7 @@ try {
             <b><?php echo e($user_thread); ?></b>
             <span><?php echo e($admin['email'] ?? ''); ?> · ADMIN</span>
           </div>
-          <a class="dropdown-item" href="users.php">
+          <a class="dropdown-item" href="<?php echo e(admin_url('users')); ?>">
             <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><rect x="2.8" y="3" width="10.4" height="10" rx="1.6"/><path d="m2.8 6 5.2 3.4L13.2 6"/></svg>
             Inbox &amp; help
           </a>
