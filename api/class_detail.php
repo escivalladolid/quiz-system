@@ -44,7 +44,7 @@ if (!$classInfo) {
 
 // Get exams for this class
 $examStmt = $pdo->prepare(
-    'SELECT e.exam_id, e.exam_name, e.duration_minutes, e.status, e.total_points,
+    'SELECT e.exam_id, e.exam_name, e.duration_minutes, e.status, e.total_points, e.hold_scores, e.is_closed,
             s.score, s.correct_count, s.total_questions, qtp.tp
      FROM exams e
      LEFT JOIN exam_submissions s ON s.exam_id = e.exam_id AND s.user_id = :uid
@@ -63,11 +63,15 @@ foreach ($exams as &$ex) {
     $examId       = (int) $ex['exam_id'];
     $earned       = $ex['score'] !== null ? (int) $ex['score'] : null;
     $totalPts     = $ex['score'] !== null ? (int) ($ex['tp'] ?? 0) : null;
-    $ex['score']         = $earned;
-    $ex['earned_points'] = $earned;
+    $scoresVisible = ((int) ($ex['is_closed'] ?? 0) === 1)
+        || strtoupper((string) ($ex['status'] ?? '')) === 'CLOSED'
+        || (int) ($ex['hold_scores'] ?? 0) === 0;
+    $ex['scores_visible'] = $scoresVisible;
+    $ex['score']         = $scoresVisible ? $earned : null;
+    $ex['earned_points'] = $scoresVisible ? $earned : null;
     $ex['total_points']  = $totalPts;
     $ex['max_points']    = $totalPts;
-    $ex['percentage']    = ($earned !== null && $totalPts > 0) ? round(($earned / $totalPts) * 100, 2) : null;
+    $ex['percentage']    = ($scoresVisible && $earned !== null && $totalPts > 0) ? round(($earned / $totalPts) * 100, 2) : null;
 }
 unset($ex);
 

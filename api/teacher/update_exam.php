@@ -44,8 +44,8 @@ try {
     }
 
     $pdo->beginTransaction();
-    $safeFields = ['exam_name', 'description', 'duration_minutes', 'passing_score', 'total_points', 'max_exit_attempts'];
-    $lockedFields = ['randomize_questions', 'randomize_options', 'duration_minutes', 'passing_score', 'total_points', 'max_exit_attempts', 'start_time', 'end_time'];
+    $safeFields = ['exam_name', 'description', 'duration_minutes', 'passing_score', 'hold_scores', 'total_points', 'max_exit_attempts'];
+    $lockedFields = ['randomize_questions', 'randomize_options', 'duration_minutes', 'passing_score', 'hold_scores', 'total_points', 'max_exit_attempts', 'start_time', 'end_time'];
 
     $updates = [];
     $params = [];
@@ -53,7 +53,7 @@ try {
     foreach ($safeFields as $field) {
         if (isset($input[$field])) {
             $updates[] = "$field=?";
-            $params[] = $input[$field];
+            $params[] = $field === 'hold_scores' ? (!empty($input[$field]) ? 1 : 0) : $input[$field];
         }
     }
 

@@ -37,7 +37,51 @@ try {
     $lock = $pdo->prepare('SELECT COUNT(*) FROM exam_submissions WHERE exam_id=?');
     $lock->execute([$input['exam_id']]);
     if ($lock->fetchColumn() > 0) sendError('Questions are locked after submissions.', 'FIELDS_LOCKED',409);
-    $input['questions'] = prepareBuilderQuestions($input['questions'], $exam['status'] !== 'DRAFT');
+    $publishing = strtoupper((string) $exam['status']) !== 'DRAFT';
+    $validQuestions = [];
+    $failures = [];
+    $warnings = [];
+    foreach (array_values($input['questions']) as $index => $row) {
+        $rowNumber = $index + 1;
+        if (!is_array($row)) {
+            $failures[] = ['row' => $rowNumber, 'error' => 'Question row must be an object.'];
+            continue;
+        }
+        try {
+            $normalized = prepareBuilderQuestion($row, false, $index);
+            $rowError = (string) ($normalized['_validation_error'] ?? '');
+            unset($normalized['_validation_error']);
+            // A draft may intentionally contain a parser review marker. All
+            // other invalid rows are reported and left out of the transaction.
+            if ($rowError !== '' && !(!$publishing && !empty($normalized['needs_review'])
+                    && $rowError === 'Confirm the imported question has been reviewed.')) {
+                $failures[] = [
+                    'row' => $rowNumber,
+                    'source_number' => $normalized['source_number'] ?? null,
+                    'error' => $rowError,
+                ];
+                continue;
+            }
+            if ($rowError !== '') {
+                $warnings[] = ['row' => $rowNumber, 'warning' => $rowError];
+            }
+            $validQuestions[] = $normalized;
+        } catch (InvalidArgumentException $e) {
+            $failures[] = [
+                'row' => $rowNumber,
+                'source_number' => $row['source_number'] ?? null,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+    if (!$validQuestions) {
+        sendError('No valid questions could be imported.', 'INVALID_QUESTIONS', 422, [
+            'imported_count' => 0,
+            'failed_count' => count($failures),
+            'errors' => $failures,
+            'warnings' => $warnings,
+        ]);
+    }
     $pdo->beginTransaction();
 
     $stmt = $pdo->prepare("SELECT COALESCE(MAX(order_num), -1) + 1 FROM questions WHERE exam_id=?");
@@ -46,7 +90,7 @@ try {
 
     $count = 0;
     $insert = $pdo->prepare("INSERT INTO questions (exam_id, question_text, question_type, options, correct_answer, points, answer_matching, answer_rules, order_num) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    foreach ($input['questions'] as $q) {
+    foreach ($validQuestions as $q) {
         $options = isset($q['options']) ? (is_array($q['options']) ? json_encode($q['options']) : $q['options']) : null;
         $insert->execute([
             $input['exam_id'],
@@ -66,7 +110,12 @@ try {
 
     sendSuccess([
         'message' => "Successfully imported $count questions",
-        'count' => $count
+        'count' => $count,
+        'imported_count' => $count,
+        'failed_count' => count($failures),
+        'errors' => $failures,
+        'warnings' => $warnings,
+        'partial' => !empty($failures),
     ], 201);
 } catch (InvalidArgumentException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();

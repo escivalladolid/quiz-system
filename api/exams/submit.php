@@ -29,7 +29,7 @@ syncExamStatuses($pdo);
 // Build the idempotent receipt for an existing submission row. score is stored
 // as earned points (variable-point scoring); percentage is derived from the
 // SUM of question points, never exams.total_points.
-$buildReceipt = function (PDO $pdo, array $sub, ?float $passingScore): array {
+$buildReceipt = function (PDO $pdo, array $sub, ?float $passingScore, bool $scoresVisible): array {
     $totalPtsStmt = $pdo->prepare(
         'SELECT COALESCE(SUM(points), 0) AS total_points FROM questions WHERE exam_id = :eid'
     );
@@ -42,14 +42,17 @@ $buildReceipt = function (PDO $pdo, array $sub, ?float $passingScore): array {
 
     return [
         'submission_id'     => (int) $sub['submission_id'],
-        'score'             => $earned,
-        'earned_points'     => $earned,
+        'score'             => $scoresVisible ? $earned : null,
+        'earned_points'     => $scoresVisible ? $earned : null,
         'total_points'      => $totalPoints,
-        'correct_count'     => (int) $sub['correct_count'],
+        'correct_count'     => $scoresVisible ? (int) $sub['correct_count'] : null,
         'total_questions'   => (int) $sub['total_questions'],
-        'percentage'        => $pct,
+        'question_count'    => (int) $sub['total_questions'],
+        'percentage'        => $scoresVisible ? $pct : null,
         'passing_score'     => $passingScore,
-        'passed'            => $passed,
+        'passed'            => $scoresVisible ? $passed : null,
+        'scores_visible'    => $scoresVisible,
+        'show_results'      => $scoresVisible ? 1 : 0,
         'time_used_secs'    => $sub['time_used_secs'] !== null ? (int) $sub['time_used_secs'] : null,
         'exit_attempts'     => (int) $sub['exit_attempts'],
         'auto_submitted'    => (bool) $sub['auto_submitted'],
@@ -59,7 +62,7 @@ $buildReceipt = function (PDO $pdo, array $sub, ?float $passingScore): array {
 
 // Get exam
 $examStmt = $pdo->prepare(
-    'SELECT e.exam_id, e.status, e.class_id, e.passing_score
+    'SELECT e.exam_id, e.status, e.is_closed, e.hold_scores, e.class_id, e.passing_score
      FROM exams e WHERE e.exam_id = :eid'
 );
 $examStmt->execute(['eid' => $examId]);
@@ -69,6 +72,9 @@ if (!$exam) {
     sendError('Exam not found.', 'NOT_FOUND', 404);
 }
 $passingScore = $exam['passing_score'] !== null ? (float) $exam['passing_score'] : null;
+$scoresVisible = ((int) ($exam['is_closed'] ?? 0) === 1)
+    || strtoupper((string) ($exam['status'] ?? '')) === 'CLOSED'
+    || (int) ($exam['hold_scores'] ?? 0) === 0;
 
 // If the student has already submitted, this is a resume/resubmit attempt.
 // Return the existing result idempotently instead of erroring, so the app
@@ -81,7 +87,7 @@ $subCheck = $pdo->prepare(
 $subCheck->execute(['eid' => $examId, 'uid' => $user['user_id']]);
 $existingSub = $subCheck->fetch();
 if ($existingSub) {
-    $receipt = $buildReceipt($pdo, $existingSub, $passingScore);
+    $receipt = $buildReceipt($pdo, $existingSub, $passingScore, $scoresVisible);
     $receipt['already_submitted'] = true;
     sendSuccess($receipt);
 }
@@ -156,7 +162,7 @@ try {
     $lockStmt->execute(['eid' => $examId, 'uid' => $user['user_id']]);
     if ($lockStmt->fetch()) {
         $subCheck->execute(['eid' => $examId, 'uid' => $user['user_id']]);
-        $receipt = $buildReceipt($pdo, $subCheck->fetch(), $passingScore);
+        $receipt = $buildReceipt($pdo, $subCheck->fetch(), $passingScore, $scoresVisible);
         $receipt['already_submitted'] = true;
         $pdo->commit();
         sendSuccess($receipt);
@@ -200,7 +206,7 @@ try {
     // One authoritative row exists regardless of this request winning or losing
     // the insert race; read it back so every retry gets the SAME result.
     $subCheck->execute(['eid' => $examId, 'uid' => $user['user_id']]);
-    $receipt = $buildReceipt($pdo, $subCheck->fetch(), $passingScore);
+    $receipt = $buildReceipt($pdo, $subCheck->fetch(), $passingScore, $scoresVisible);
     $receipt['already_submitted'] = !$inserted;
 
     $pdo->commit();

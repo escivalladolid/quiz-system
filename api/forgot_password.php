@@ -62,12 +62,19 @@ try {
             'expires_at' => $expiresAt,
         ]);
 
-        // SMTP every time it is configured; otherwise log the code server-side
-        // so this capstone's manual/demo reset flow can still be exercised
-        // without a mail server.
+        // A reset is not useful unless the recipient can receive the code.
+        // Keep the token out of the response and remove it again when the
+        // configured provider rejects the message, so the next request can
+        // issue a fresh code instead of leaving a dead token in the database.
         $sent = sendPasswordResetEmail($user['email'], $resetToken, $expiresAt);
         if (!$sent) {
-            error_log('Password recovery email delivery failed.');
+            $pdo->prepare('DELETE FROM password_resets WHERE user_id = :user_id')
+                ->execute(['user_id' => $user['user_id']]);
+            sendError(
+                'We could not send the password-reset email right now. Please try again later.',
+                'EMAIL_DELIVERY_UNAVAILABLE',
+                503
+            );
         }
 
         sendSuccess([

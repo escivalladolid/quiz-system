@@ -49,7 +49,7 @@ $offset = ($page - 1) * $perPage;
 
 $stmt = $pdo->prepare(
     "SELECT e.exam_id, e.exam_name, e.status, e.start_time, e.end_time, e.duration_minutes,
-            e.passing_score, e.total_points, e.is_closed, e.closed_at, e.created_at, e.class_id,
+            e.passing_score, e.total_points, e.hold_scores, e.is_closed, e.closed_at, e.created_at, e.class_id,
             c.subject_name, c.subject_code, c.block,
             (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.exam_id) AS question_count,
             (SELECT COALESCE(SUM(q.points), 0) FROM questions q WHERE q.exam_id = e.exam_id) AS points_count,

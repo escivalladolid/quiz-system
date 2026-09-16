@@ -58,6 +58,9 @@ try {
     if (!in_array($status, ['ACTIVE', 'INACTIVE', 'BANNED'], true)) {
         sendError('Invalid status.', 'INVALID_STATUS', 422);
     }
+    if (($target['status'] ?? '') === 'PENDING' && $status === 'ACTIVE') {
+        sendError('Email verification is required before a pending account can be activated.', 'EMAIL_NOT_VERIFIED', 409);
+    }
 
     // Never allow an admin to lock themselves out by demoting, banning or
     // deactivating their own account.

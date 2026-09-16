@@ -19,7 +19,7 @@ syncExamStatuses($pdo);
 // All exams for classes the student is enrolled in, with submission status
 $stmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.duration_minutes, e.status AS exam_status,
-            e.total_points, e.is_closed, c.subject_code, c.subject_name, c.block,
+            e.total_points, e.hold_scores, e.is_closed, c.subject_code, c.subject_name, c.block,
             s.score, s.correct_count, s.total_questions, s.submission_id, s.results_released,
             qtp.tp
      FROM exams e
@@ -44,7 +44,9 @@ foreach ($exams as &$ex) {
     $examId     = (int) $ex['exam_id'];
     $earned     = $ex['score'] !== null ? (int) $ex['score'] : null;
     $totalPts   = $ex['score'] !== null ? (int) ($ex['tp'] ?? 0) : null;
-    $scoresVisible = ((int) $ex['is_closed'] === 1) || strtoupper((string) $ex['exam_status']) === 'CLOSED';
+    $scoresVisible = ((int) $ex['is_closed'] === 1)
+        || strtoupper((string) $ex['exam_status']) === 'CLOSED'
+        || (int) ($ex['hold_scores'] ?? 0) === 0;
     $ex['has_submission'] = $ex['submission_id'] !== null;
     $ex['review_available'] = $ex['submission_id'] !== null
         && ($scoresVisible || (int) $ex['results_released'] === 1);

@@ -250,4 +250,3 @@ try {
 } catch (PDOException $e) {
     sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);
 }
-

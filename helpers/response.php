@@ -6,10 +6,14 @@ function sendSuccess(array $data = [], int $statusCode = 200): void {
     exit;
 }
 
-function sendError(string $message, string $code = 'ERROR', int $statusCode = 400): void {
+function sendError(string $message, string $code = 'ERROR', int $statusCode = 400, ?array $data = null): void {
     http_response_code($statusCode);
     header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'error' => $message, 'code' => $code]);
+    $payload = ['success' => false, 'error' => $message, 'code' => $code];
+    if ($data !== null) {
+        $payload['data'] = $data;
+    }
+    echo json_encode($payload);
     exit;
 }
 

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/validation.php';
 
 header('Content-Type: application/json');
 
@@ -27,14 +28,15 @@ $added = 0;
 $updated = 0;
 $skipped = 0;
 $errors = [];
+$seenLrn = [];
 
 try {
     $sel = $pdo->prepare('SELECT id FROM student_roster WHERE lrn = ?');
     $ins = $pdo->prepare(
-        'INSERT INTO student_roster (lrn, full_name, program) VALUES (?, ?, ?)'
+        'INSERT INTO student_roster (lrn, full_name, program, email) VALUES (?, ?, ?, ?)'
     );
     $upd = $pdo->prepare(
-        'UPDATE student_roster SET full_name = ?, program = ?, imported_at = NOW() WHERE lrn = ?'
+        'UPDATE student_roster SET full_name = ?, program = ?, email = COALESCE(?, email), imported_at = NOW() WHERE lrn = ?'
     );
 
     foreach ($rows as $i => $row) {
@@ -42,20 +44,33 @@ try {
         $full  = trim((string) ($row['full_name'] ?? ''));
         $prog  = isset($row['program']) ? trim((string) $row['program']) : '';
         if ($prog === '') $prog = null;
+        $email = isset($row['email']) ? trim((string) $row['email']) : '';
+        if ($email !== '' && ($emailError = validateEmail($email)) !== null) {
+            $skipped++;
+            $errors[] = 'Row ' . ($i + 1) . ': ' . $emailError;
+            continue;
+        }
+        $emailValue = $email !== '' ? $email : null;
 
         if ($lrn === '' || $full === '') {
             $skipped++;
             $errors[] = 'Row ' . ($i + 1) . ': missing Student No. or full_name';
             continue;
         }
+        if (isset($seenLrn[$lrn])) {
+            $skipped++;
+            $errors[] = 'Row ' . ($i + 1) . ': duplicate Student No. ' . $lrn . ' in this file (first occurrence kept)';
+            continue;
+        }
+        $seenLrn[$lrn] = true;
 
         try {
             $sel->execute([$lrn]);
             if ($sel->fetch()) {
-                $upd->execute([$full, $prog, $lrn]);
+                $upd->execute([$full, $prog, $emailValue, $lrn]);
                 $updated++;
             } else {
-                $ins->execute([$lrn, $full, $prog]);
+                $ins->execute([$lrn, $full, $prog, $emailValue]);
                 $added++;
             }
         } catch (PDOException $e) {

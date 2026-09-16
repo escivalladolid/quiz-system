@@ -112,6 +112,9 @@ function sendEmailJsMail(string $to, string $subject, string $html, array $templ
         }
     }
     if ($status >= 200 && $status < 300) {
+        $recipientHash = substr(hash('sha256', strtolower(trim($to))), 0, 12);
+        error_log('Mailer: EmailJS accepted message type=' . ($emailType !== '' ? $emailType : 'general')
+            . ' recipient_hash=' . $recipientHash);
         return true;
     }
 
@@ -168,7 +171,10 @@ function sendSmtpMail(string $to, string $subject, string $html): bool {
     fwrite($conn, "EHLO quiz.rmc.edu.ph\r\n");
     if (!smtp_read($conn, 250)) { fclose($conn); return false; }
 
-    // STARTTLS for non-implicit-TLS ports where it is offered.
+    // STARTTLS for non-implicit-TLS ports. Never silently continue with an
+    // unencrypted connection: that would expose the SMTP password and message
+    // contents. A local developer may explicitly opt in for a legacy server
+    // with SMTP_ALLOW_INSECURE=1, but production remains fail-closed.
     if ($port !== 465) {
         fwrite($conn, "STARTTLS\r\n");
         if (smtp_read($conn, 220)) {
@@ -180,7 +186,12 @@ function sendSmtpMail(string $to, string $subject, string $html): bool {
             fwrite($conn, "EHLO quiz.rmc.edu.ph\r\n");
             smtp_read($conn, 250); // multi-line capability response
         } else {
-            error_log('Mailer: STARTTLS not accepted by ' . $host . ', continuing unencrypted');
+            if (getenv('SMTP_ALLOW_INSECURE') !== '1') {
+                error_log('Mailer: STARTTLS not accepted by ' . $host . '; refusing an unencrypted connection');
+                fclose($conn);
+                return false;
+            }
+            error_log('Mailer: STARTTLS not accepted by ' . $host . '; insecure fallback explicitly enabled');
         }
     }
 
@@ -227,7 +238,37 @@ function sendSmtpMail(string $to, string $subject, string $html): bool {
     fwrite($conn, "QUIT\r\n");
     smtp_read($conn, 221);
     fclose($conn);
+    $recipientHash = substr(hash('sha256', strtolower(trim($to))), 0, 12);
+    error_log('Mailer: SMTP accepted message recipient_hash=' . $recipientHash);
     return true;
+}
+
+/**
+ * Send a support report to the configured administrator without exposing the
+ * report contents or recipient address in application logs.
+ */
+function sendLoginProblemReportEmail(string $to, string $contact, string $role,
+                                     string $step, string $description, string $screen = '',
+                                     string $deviceInfo = ''): bool {
+    $subject = 'RMC Quiz & Exam System - Login problem report';
+    $html = '<p>A user submitted a login problem report.</p>'
+        . '<p><strong>Role:</strong> ' . htmlspecialchars($role, ENT_QUOTES, 'UTF-8') . '<br>'
+        . '<strong>Step:</strong> ' . htmlspecialchars($step, ENT_QUOTES, 'UTF-8') . '<br>'
+        . '<strong>Contact:</strong> ' . htmlspecialchars($contact, ENT_QUOTES, 'UTF-8') . '</p>'
+        . ($screen !== '' ? '<p><strong>Screen:</strong> ' . htmlspecialchars($screen, ENT_QUOTES, 'UTF-8') . '</p>' : '')
+        . '<p><strong>Description:</strong><br>'
+        . nl2br(htmlspecialchars($description, ENT_QUOTES, 'UTF-8')) . '</p>'
+        . ($deviceInfo !== '' ? '<p><strong>Device:</strong> ' . htmlspecialchars($deviceInfo, ENT_QUOTES, 'UTF-8') . '</p>' : '');
+
+    return sendMail($to, $subject, $html, [
+        'email_type' => 'login_problem',
+        'contact' => $contact,
+        'role' => $role,
+        'step' => $step,
+        'description' => $description,
+        'screen' => $screen,
+        'device_info' => $deviceInfo,
+    ]);
 }
 
 /**

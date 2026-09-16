@@ -12,7 +12,7 @@ $page    = max(1, (int) ($_GET['page'] ?? 1));
 
 $params = ['page' => $page, 'per_page' => 12];
 if (in_array($role, ['STUDENT', 'TEACHER', 'ADMIN'], true)) { $params['role'] = $role; }
-if (in_array($status, ['ACTIVE', 'INACTIVE', 'BANNED'], true)) { $params['status'] = $status; }
+if (in_array($status, ['PENDING', 'ACTIVE', 'INACTIVE', 'BANNED'], true)) { $params['status'] = $status; }
 if ($search !== '') { $params['search'] = $search; }
 
 $db_online = true;
@@ -61,7 +61,7 @@ require_once __DIR__ . '/inc/header.php';
   </select>
   <select class="input" name="status" aria-label="Status">
     <option value="">All statuses</option>
-    <?php foreach (['ACTIVE', 'INACTIVE', 'BANNED'] as $s): ?>
+    <?php foreach (['PENDING', 'ACTIVE', 'INACTIVE', 'BANNED'] as $s): ?>
       <option value="<?php echo e($s); ?>" <?php echo $status === $s ? 'selected' : ''; ?>><?php echo e(ucfirst(strtolower($s))); ?></option>
     <?php endforeach; ?>
   </select>
@@ -154,10 +154,12 @@ require_once __DIR__ . '/inc/header.php';
                   <button class="row-action danger" type="button" data-act="ban" title="Ban">
                     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="5.4"/><path d="m4.8 4.8 6.4 6.4"/></svg>
                   </button>
-                <?php else: ?>
+                <?php elseif ($status === 'BANNED'): ?>
                   <button class="row-action" type="button" data-act="activate" title="Reactivate">
                     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5.5 3.8 6 4.2-6 4.2z"/></svg>
                   </button>
+                <?php else: ?>
+                  <span style="font-size:11px;color:var(--ink-400);">Awaiting email</span>
                 <?php endif; ?>
               </td>
             </tr>

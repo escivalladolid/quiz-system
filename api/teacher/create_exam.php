@@ -66,13 +66,14 @@ try {
 
     $pdo->beginTransaction();
 
-    $stmt = $pdo->prepare("INSERT INTO exams (class_id, exam_name, description, duration_minutes, passing_score, status, start_time, end_time, total_points, randomize_questions, randomize_options, max_exit_attempts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt = $pdo->prepare("INSERT INTO exams (class_id, exam_name, description, duration_minutes, passing_score, hold_scores, status, start_time, end_time, total_points, randomize_questions, randomize_options, max_exit_attempts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     $stmt->execute([
         $input['class_id'],
         $input['exam_name'],
         $input['description'] ?? '',
         $input['duration_minutes'],
         $input['passing_score'],
+        !empty($input['hold_scores']) ? 1 : 0,
         $status,
         $startTime,
         $endTime,

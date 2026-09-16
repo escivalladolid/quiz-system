@@ -30,6 +30,7 @@ $routes = [
     'exam_status'         => ['POST', 'admin/exam_status.php'],
     'exam_detail'         => ['GET', 'admin/exam_detail.php'],
     'session_kill'        => ['POST', 'admin/session_kill.php'],
+    'login_problem_reports' => ['GET', 'admin/login_problem_reports.php'],
 ];
 
 $action = $_GET['action'] ?? '';

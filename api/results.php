@@ -20,17 +20,17 @@ $user   = requireRole($pdo, ['STUDENT']);
  *   - review_available  = per-question detailed review. True when the exam is
  *     closed (or its deadline passed) OR the teacher released THIS student's
  *     submission early (exam_submissions.results_released = 1).
- *   - scores_visible    = aggregate score/percentage/passed. ONLY true once the
- *     exam is fully closed (is_closed or deadline passed). A per-student early
- *     release unlocks the review but NOT the score, so scores stay hidden until
- *     the teacher closes the exam for everyone.
+ *   - scores_visible    = aggregate score/percentage/passed. It is true for
+ *     normal auto-graded exams after submission, or for a held exam once the
+ *     teacher closes it. A per-student early release unlocks detailed review
+ *     but does not bypass the hold-scores setting.
  *
  * Lazy auto-close: if the exam's scheduled end time has passed but the stored
  * flag wasn't flipped yet, flip it now so later reads are cheap.
  */
 function resolveReviewAvailability(PDO $pdo, int $examId, bool $submissionReleased = false): array {
     $stmt = $pdo->prepare(
-        'SELECT e.exam_id, e.is_closed, e.end_time
+        'SELECT e.exam_id, e.is_closed, e.status, e.end_time, e.hold_scores
          FROM exams e WHERE e.exam_id = :eid'
     );
     $stmt->execute(['eid' => $examId]);
@@ -45,7 +45,8 @@ function resolveReviewAvailability(PDO $pdo, int $examId, bool $submissionReleas
     }
 
     $pastDeadline = !empty($exam['end_time']) && (strtotime($exam['end_time']) < time());
-    $isClosed = (int) $exam['is_closed'] === 1;
+    $isClosed = (int) $exam['is_closed'] === 1
+        || strtoupper((string) ($exam['status'] ?? '')) === 'CLOSED';
 
     if (!$isClosed && $pastDeadline) {
         $pdo->prepare(
@@ -62,9 +63,10 @@ function resolveReviewAvailability(PDO $pdo, int $examId, bool $submissionReleas
         ];
     }
 
+    $scoresVisible = (int) ($exam['hold_scores'] ?? 0) === 0;
     return [
-        'review_available' => $submissionReleased,
-        'scores_visible'   => false,
+        'review_available' => $scoresVisible || $submissionReleased,
+        'scores_visible'   => $scoresVisible,
         'is_closed'        => false,
     ];
 }
@@ -77,6 +79,7 @@ if ($examId > 0) {
         'SELECT s.submission_id, s.exam_id, s.score, s.correct_count, s.total_questions,
                 s.time_used_secs, s.submitted_at, s.answers_json, s.results_released,
                 e.exam_name, e.total_points AS max_points, e.passing_score,
+                e.hold_scores,
                 c.subject_code, c.subject_name
          FROM exam_submissions s
          JOIN exams e ON e.exam_id = s.exam_id
@@ -114,7 +117,7 @@ if ($examId > 0) {
         'exam_name'         => $result['exam_name'],
         'subject_code'      => $result['subject_code'],
         'subject_name'      => $result['subject_name'],
-        // Score fields exist ONLY when the exam is closed.
+        // Aggregate score fields stay null while a teacher-held exam is open.
         'score'             => $scoresVisible ? $earnedPoints : null,
         'earned_points'     => $scoresVisible ? $earnedPoints : null,
         'max_points'        => $totalPoints,
@@ -142,7 +145,8 @@ if ($examId > 0) {
 $stmt = $pdo->prepare(
     'SELECT s.submission_id, s.exam_id, s.score, s.correct_count, s.total_questions,
             s.time_used_secs, s.submitted_at, s.results_released,
-            e.exam_name, e.total_points AS max_points, e.passing_score,
+     e.exam_name, e.total_points AS max_points, e.passing_score,
+            e.hold_scores,
             c.subject_code, c.subject_name
      FROM exam_submissions s
      JOIN exams e ON e.exam_id = s.exam_id
@@ -187,4 +191,3 @@ foreach ($results as $r) {
 }
 
 sendSuccess(['results' => $payload]);
-

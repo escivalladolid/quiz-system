@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/validation.php';
 
 header('Content-Type: application/json');
 
@@ -31,10 +32,10 @@ $errors = [];
 try {
     $sel = $pdo->prepare('SELECT id FROM teacher_roster WHERE employee_number = ?');
     $ins = $pdo->prepare(
-        'INSERT INTO teacher_roster (employee_number, full_name, department) VALUES (?, ?, ?)'
+        'INSERT INTO teacher_roster (employee_number, full_name, department, email) VALUES (?, ?, ?, ?)'
     );
     $upd = $pdo->prepare(
-        'UPDATE teacher_roster SET full_name = ?, department = ?, imported_at = NOW() WHERE employee_number = ?'
+        'UPDATE teacher_roster SET full_name = ?, department = ?, email = COALESCE(?, email), imported_at = NOW() WHERE employee_number = ?'
     );
 
     foreach ($rows as $i => $row) {
@@ -42,6 +43,13 @@ try {
         $full = trim((string) ($row['full_name'] ?? ''));
         $dept = isset($row['department']) ? trim((string) $row['department']) : '';
         if ($dept === '') $dept = null;
+        $email = isset($row['email']) ? trim((string) $row['email']) : '';
+        if ($email !== '' && ($emailError = validateEmail($email)) !== null) {
+            $skipped++;
+            $errors[] = 'Row ' . ($i + 1) . ': ' . $emailError;
+            continue;
+        }
+        $emailValue = $email !== '' ? $email : null;
 
         if ($emp === '' || $full === '') {
             $skipped++;
@@ -52,10 +60,10 @@ try {
         try {
             $sel->execute([$emp]);
             if ($sel->fetch()) {
-                $upd->execute([$full, $dept, $emp]);
+                $upd->execute([$full, $dept, $emailValue, $emp]);
                 $updated++;
             } else {
-                $ins->execute([$emp, $full, $dept]);
+                $ins->execute([$emp, $full, $dept, $emailValue]);
                 $added++;
             }
         } catch (PDOException $e) {

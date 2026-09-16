@@ -32,7 +32,7 @@ syncExamStatuses($pdo);
 $examStmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.description, e.duration_minutes, e.status,
             e.total_points, e.passing_score, e.randomize_questions, e.randomize_options,
-            e.max_exit_attempts, e.end_time, e.is_closed,
+            e.max_exit_attempts, e.end_time, e.is_closed, e.hold_scores,
             c.class_id, c.subject_name,
             u.first_name AS teacher_first_name, u.last_name AS teacher_last_name
      FROM exams e
@@ -174,7 +174,7 @@ sendSuccess([
     'description'           => $exam['description'],
     'duration_minutes'      => $exam['duration_minutes'],
     'status'                => $exam['status'],
-    'total_points'          => $totalPointsFromQuestions,
+    'total_points'          => $exam['total_points'],
     'total_points_from_questions' => $totalPointsFromQuestions,
     'passing_score'         => $exam['passing_score'] ?? null,
     'randomize_questions'   => (int) ($exam['randomize_questions'] ?? 0),
@@ -183,7 +183,8 @@ sendSuccess([
     'teacher_name'          => trim($exam['teacher_first_name'] . ' ' . $exam['teacher_last_name']),
     'subject_name'          => $exam['subject_name'],
     'question_count'        => $questionCount,
-    'show_results'          => ((int) $exam['is_closed'] === 1) ? 1 : 0,
+    'hold_scores'           => (int) ($exam['hold_scores'] ?? 0),
+    'show_results'          => ((int) $exam['is_closed'] === 1 || (int) ($exam['hold_scores'] ?? 0) === 0) ? 1 : 0,
     'started'               => $starting,
     'time_started'          => $startedAt,
     'deadline'              => $deadlineAt,

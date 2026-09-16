@@ -25,7 +25,7 @@ if ($role !== '' && in_array($role, ['STUDENT', 'TEACHER', 'ADMIN'], true)) {
     $where[] = 'r.role_name = :role';
     $params['role'] = $role;
 }
-if ($status !== '' && in_array($status, ['ACTIVE', 'INACTIVE', 'BANNED'], true)) {
+if ($status !== '' && in_array($status, ['PENDING', 'ACTIVE', 'INACTIVE', 'BANNED'], true)) {
     $where[] = 'u.status = :status';
     $params['status'] = $status;
 }

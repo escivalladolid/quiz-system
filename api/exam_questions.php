@@ -24,7 +24,7 @@ syncExamStatuses($pdo);
 // Get exam info and verify student is enrolled
 $examStmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.description, e.duration_minutes, e.status,
-            e.total_points, e.passing_score, e.randomize_questions, e.randomize_options,
+            e.total_points, e.passing_score, e.hold_scores, e.randomize_questions, e.randomize_options,
             e.max_exit_attempts,
             c.class_id, c.subject_name,
             u.first_name AS teacher_first_name, u.last_name AS teacher_last_name
@@ -165,6 +165,9 @@ sendSuccess([
         'status'               => $exam['status'],
         'total_points'         => $exam['total_points'],
         'passing_score'        => $exam['passing_score'] ?? null,
+        'hold_scores'          => (int) ($exam['hold_scores'] ?? 0),
+        'show_results'         => ((int) ($exam['hold_scores'] ?? 0) === 0
+            || strtoupper((string) $exam['status']) === 'CLOSED') ? 1 : 0,
         'total_points_from_questions' => $totalPointsFromQuestions,
         'randomize_questions'  => (int) ($exam['randomize_questions'] ?? 0),
         'randomize_options'    => (int) ($exam['randomize_options'] ?? 0),

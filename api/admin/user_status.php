@@ -44,6 +44,13 @@ if (empty($ids)) {
 
 try {
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    if ($status === 'ACTIVE') {
+        $check = $pdo->prepare("SELECT COUNT(*) FROM users WHERE user_id IN ($placeholders) AND status = 'PENDING'");
+        $check->execute($ids);
+        if ((int) $check->fetchColumn() > 0) {
+            sendError('Email verification is required before a pending account can be activated.', 'EMAIL_NOT_VERIFIED', 409);
+        }
+    }
     $stmt = $pdo->prepare("UPDATE users SET status = ? WHERE user_id IN ($placeholders)");
     $stmt->execute(array_merge([$status], $ids));
     $affected = $stmt->rowCount();

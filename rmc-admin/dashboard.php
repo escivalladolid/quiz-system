@@ -163,6 +163,12 @@ $d = admin_api_data($res, ['logs' => [], 'summary' => []], 'System logs', $dashb
 $auditLogs = admin_array_rows($d['logs'] ?? null);
 $auditSummary = admin_array_rows($d['summary'] ?? null);
 
+/* ---------- Login problem reports ---------- */
+$loginReports = [];
+$res = admin_api_request('GET', 'admin/login_problem_reports.php?per_page=100', [], $token);
+$d = admin_api_data($res, ['reports' => []], 'Login problem reports', $dashboard_failures);
+$loginReports = admin_array_rows($d['reports'] ?? null);
+
 /* ---------- Maintenance view (health + sessions) ---------- */
 $maint = ['db_now' => null, 'tz_offset_seconds' => 0, 'table_counts' => [], 'sessions' => [],
           'active_sessions' => 0, 'php_version' => PHP_VERSION];
@@ -453,6 +459,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
 
   .status-badge{font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:5px;}
   .status-active{background:var(--ok-bg);color:var(--ok);}
+  .status-pending{background:var(--warn-bg);color:var(--warn);}
   .status-inactive{background:var(--danger-bg);color:var(--danger);}
   .status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
 
@@ -997,7 +1004,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
                   $roleName = strtoupper((string) ($u['role_name'] ?? ''));
                   $roleCls  = $roleName === 'STUDENT' ? 'role-student' : ($roleName === 'TEACHER' ? 'role-teacher' : 'role-admin');
                   $status   = strtoupper((string) ($u['status'] ?? 'ACTIVE'));
-                  $statusCls = $status === 'ACTIVE' ? 'status-active' : 'status-inactive';
+                  $statusCls = $status === 'ACTIVE' ? 'status-active' : ($status === 'PENDING' ? 'status-pending' : 'status-inactive');
                   $studentId = $u['student_id'] ?? null;
                   $idDisp   = $studentId !== '' && $studentId !== null
                               ? $studentId
@@ -1044,10 +1051,12 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
                         <button class="icon-btn" type="button" data-act="ban" title="Ban" style="color:var(--danger);">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m5 5 14 14"/></svg>
                         </button>
-                      <?php else: ?>
+                      <?php elseif ($status === 'BANNED'): ?>
                         <button class="icon-btn" type="button" data-act="activate" title="Reactivate">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5 9-10"/></svg>
                         </button>
+                      <?php else: ?>
+                        <span style="font-size:11px;color:var(--ink-400);">Awaiting email</span>
                       <?php endif; ?>
                     </div>
                   </td>
@@ -1067,18 +1076,18 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
             <h3 style="margin:0 0 4px;">Import Roster</h3>
             <div style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">
               Upload the registrar's student list (LRNs) or HR employee list so students and teachers can
-              register and auto-activate through the app. Re-importing a file updates existing entries and adds new rows.
+              register through the app and verify their email before activation. Re-importing a file updates existing entries and adds new rows.
             </div>
             <div class="form-row" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;">
               <div class="field" style="flex:1;min-width:220px;margin:0;">
-                <label>Student roster (.csv) &mdash; columns: <span class="mono">student_no, full_name, program</span></label>
+              <label>Student roster (.csv) &mdash; columns: <span class="mono">student_no, full_name, program, email</span></label>
                 <input class="input" type="file" id="studentRosterFile" accept=".csv,text/csv">
               </div>
               <button class="btn btn-amber" type="button" id="btnImportStudents">Import student roster</button>
             </div>
             <div class="form-row" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-top:12px;">
               <div class="field" style="flex:1;min-width:220px;margin:0;">
-                <label>Teacher roster (.csv) &mdash; columns: <span class="mono">employee_number, full_name, department</span></label>
+              <label>Teacher roster (.csv) &mdash; columns: <span class="mono">employee_number, full_name, department, email</span></label>
                 <input class="input" type="file" id="teacherRosterFile" accept=".csv,text/csv">
               </div>
               <button class="btn btn-amber" type="button" id="btnImportTeachers">Import teacher roster</button>
@@ -1408,13 +1417,34 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
                 <tr><td colspan="4" class="id-cell" style="text-align:center;padding:26px;font-size:13px;color:var(--ink-soft);">No log entries found.</td></tr>
               <?php endif; ?>
             </tbody>
-          </table>
-          </div>
-        </div>
-      </div>
-    </div>
+           </table>
+           </div>
+         </div>
+         <div class="table-panel" style="margin-top:18px;">
+           <div class="table-tools"><span>Login problem reports</span><span class="muted"><?php echo number_format(count($loginReports)); ?> shown</span></div>
+           <div class="table-scroll">
+           <table id="loginProblemTable">
+             <thead><tr><th>When</th><th>Contact</th><th>Role / step</th><th>Description</th><th>Status</th></tr></thead>
+             <tbody>
+               <?php foreach ($loginReports as $report): ?>
+                 <?php $reportStatus = strtoupper((string) ($report['status'] ?? 'OPEN')); ?>
+                 <tr>
+                   <td class="mono" style="white-space:nowrap;font-size:12px;color:var(--ink-soft);"><?php echo e(date('M j, Y g:i A', strtotime($report['created_at'] ?? ''))); ?></td>
+                   <td><?php echo e($report['contact'] ?? ''); ?></td>
+                   <td><strong><?php echo e($report['role'] ?? 'UNKNOWN'); ?></strong><br><span style="font-size:11px;color:var(--ink-soft);"><?php echo e($report['step'] ?? ''); ?></span></td>
+                   <td style="max-width:420px;white-space:normal;color:var(--ink-soft);"><?php echo e($report['description'] ?? ''); ?></td>
+                   <td><span class="tag <?php echo $reportStatus === 'RESOLVED' ? 'tag-pass' : 'tag-royal'; ?>"><?php echo e($reportStatus); ?></span></td>
+                 </tr>
+               <?php endforeach; ?>
+               <?php if (!count($loginReports)): ?><tr><td colspan="5" class="id-cell" style="text-align:center;padding:20px;color:var(--ink-soft);">No login problem reports.</td></tr><?php endif; ?>
+             </tbody>
+           </table>
+           </div>
+         </div>
+       </div>
+     </div>
 
-    <!-- ============ REPORTS VIEW ============ -->
+     <!-- ============ REPORTS VIEW ============ -->
     <div class="view" id="view-reports">
       <div class="topbar">
         <div class="topbar-title">
@@ -2310,7 +2340,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
     reader.onload = function(){
       try {
         var rows = parseCSVRows(String(reader.result), cols);
-        var header = rows.length ? (rows[0][cols[0]] || '').toLowerCase() : '';
+        var header = rows.length ? (rows[0][cols[0]] || '').replace(/^\uFEFF/, '').trim().toLowerCase() : '';
         if (rows.length && (cols.indexOf(header) !== -1 ||
             (action === 'roster_import_student' && header === 'student_no'))) rows.shift();
         if (!rows.length) { showRosterAlert('No data rows found in ' + f.name + '.'); return; }
@@ -2333,10 +2363,10 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
     reader.readAsText(f);
   }
   document.getElementById('btnImportStudents').addEventListener('click', function(){
-    handleRosterImport(document.getElementById('studentRosterFile'), ['lrn', 'full_name', 'program'], 'roster_import_student');
+    handleRosterImport(document.getElementById('studentRosterFile'), ['lrn', 'full_name', 'program', 'email'], 'roster_import_student');
   });
   document.getElementById('btnImportTeachers').addEventListener('click', function(){
-    handleRosterImport(document.getElementById('teacherRosterFile'), ['employee_number', 'full_name', 'department'], 'roster_import_teacher');
+    handleRosterImport(document.getElementById('teacherRosterFile'), ['employee_number', 'full_name', 'department', 'email'], 'roster_import_teacher');
   });
 
   /* bulk selection */

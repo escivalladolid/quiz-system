@@ -39,6 +39,5 @@ try {
         'subject_name' => $input['subject_name']
     ], 201);
 } catch (PDOException $e) {
-    error_log('QuizSystem DB Error: ' . $e->getMessage());
-    sendError('An unexpected error occurred. Please try again.', 'DB_ERROR', 500);
+    sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);
 }
