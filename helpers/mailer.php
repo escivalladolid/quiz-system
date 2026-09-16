@@ -115,7 +115,29 @@ function sendEmailJsMail(string $to, string $subject, string $html, array $templ
         return true;
     }
 
-    error_log('Mailer: EmailJS rejected message (HTTP ' . $status . ')');
+    // Keep the response reason in Render logs so configuration errors can be
+    // diagnosed without exposing any credential or message payload.
+    $reason = '';
+    $decodedResponse = json_decode((string) $response, true);
+    if (is_array($decodedResponse)) {
+        foreach (['error', 'message', 'text'] as $field) {
+            if (isset($decodedResponse[$field]) && is_scalar($decodedResponse[$field])) {
+                $reason = trim((string) $decodedResponse[$field]);
+                if ($reason !== '') {
+                    break;
+                }
+            }
+        }
+    }
+    if ($reason === '') {
+        $reason = trim(strip_tags((string) $response));
+    }
+    $reason = preg_replace('/\\s+/', ' ', $reason) ?? '';
+    if (strlen($reason) > 240) {
+        $reason = substr($reason, 0, 240) . '…';
+    }
+    error_log('Mailer: EmailJS rejected message (HTTP ' . $status . ')'
+        . ($reason !== '' ? ': ' . $reason : ''));
     return false;
 }
 
