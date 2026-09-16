@@ -52,3 +52,17 @@ services:
       # Health check target (returned by the root endpoint).
       - key: APP_ENV
         value: production
+      # SMTP is used for password recovery and roster email verification.
+      # Keep the account and app password as Render secrets.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: RMC Quiz & Exam System

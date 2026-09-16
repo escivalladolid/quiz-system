@@ -128,6 +128,24 @@ function sendPasswordResetEmail(string $to, string $resetToken, string $expiresA
 }
 
 /**
+ * Build the email used to verify a newly registered roster account.
+ * The token is intentionally delivered only by email and is never returned
+ * in the API response or written to the application log.
+ */
+function sendRegistrationVerificationEmail(string $to, string $verificationToken, string $expiresAt): bool {
+    $subject = 'RMC Quiz & Exam System - Verify your email';
+    $expiryReadable = date('F j, Y g:i A', strtotime($expiresAt));
+    $html = '<p>Thank you for registering for the RMC Quiz and Exam System.</p>'
+        . '<p>Enter this verification code in the app to activate your account:</p>'
+        . '<p style="font-size:22px;font-weight:bold;letter-spacing:4px;">'
+        . htmlspecialchars($verificationToken) . '</p>'
+        . '<p>This code expires on <strong>' . htmlspecialchars($expiryReadable)
+        . '</strong>. If you did not create this account, you can safely ignore '
+        . 'this email.</p>';
+    return sendMail($to, $subject, $html);
+}
+
+/**
  * Read one SMTP server reply line, look for the expected leading code.
  */
 function smtp_read($conn, int $expectedCode): bool {

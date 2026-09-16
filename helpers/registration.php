@@ -10,7 +10,20 @@
  * first name ("Juan Dela Cruz" -> first "Juan Dela", last "Cruz").
  */
 function splitFullName(string $fullName, ?string &$firstName, ?string &$lastName): void {
-    $parts = preg_split('/\s+/', trim($fullName));
+    $fullName = trim($fullName);
+
+    // Registrar exports commonly use "SURNAME, GIVEN NAME". Preserve that
+    // meaning instead of treating the final given-name token as the surname.
+    if (strpos($fullName, ',') !== false) {
+        [$surname, $givenNames] = array_map('trim', explode(',', $fullName, 2));
+        if ($surname !== '' && $givenNames !== '') {
+            $firstName = $givenNames;
+            $lastName = $surname;
+            return;
+        }
+    }
+
+    $parts = preg_split('/\s+/', $fullName);
     $lastName  = (string) array_pop($parts);
     $firstName = implode(' ', $parts);
     if ($firstName === '') {

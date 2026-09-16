@@ -47,8 +47,11 @@ try {
     if (!$user) {
         sendError($invalidCredsMessage, 'INVALID_CREDENTIALS', 401);
     }
+    if ($user['status'] === 'PENDING') {
+        sendError('Please verify your email with the code we sent before logging in.', 'NOT_ACTIVATED', 403);
+    }
     if ($user['status'] !== 'ACTIVE') {
-        sendError('This account has not been activated yet. Please activate your account first.', 'NOT_ACTIVATED', 403);
+        sendError('This account is inactive. Please contact the Admin Office.', 'ACCOUNT_INACTIVE', 403);
     }
     if (!$user['password_hash'] || !password_verify($password, $user['password_hash'])) {
         sendError($invalidCredsMessage, 'INVALID_CREDENTIALS', 401);
