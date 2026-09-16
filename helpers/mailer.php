@@ -1,14 +1,13 @@
 <?php
 /**
- * Minimal SMTP mailer using PHP stream sockets (no Composer dependency).
+ * Dependency-free mailer for the quiz API.
  *
- * Reads SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD / SMTP_FROM_EMAIL /
- * SMTP_FROM_NAME from the environment, mirroring config/database.php. When
- * SMTP_HOST is unset, sendMail() returns false and the caller decides how to
- * handle the failure (e.g. log the code server-side and continue).
+ * Production on Render Free uses EmailJS over HTTPS because that plan blocks
+ * outbound SMTP ports. SMTP remains available as a local-development fallback
+ * (or on a paid host). EmailJS credentials are read only from the environment;
+ * they are never shipped in the Android application.
  *
- * Works on XAMPP (plain sockets) and Render (env vars set in the service
- * settings). Supports implicit TLS (port 465) and STARTTLS (typically 587).
+ * SMTP supports implicit TLS (port 465) and STARTTLS (typically 587).
  */
 
 function smtp_configured(): bool {
@@ -16,15 +15,114 @@ function smtp_configured(): bool {
 }
 
 /**
- * Send a plain-HTML email via SMTP.
+ * Send a plain-HTML email using the configured provider.
+ *
+ * Set EMAIL_PROVIDER=emailjs (or provide EMAILJS_SERVICE_ID) in production.
+ * If EmailJS is not configured, the local SMTP implementation is used.
  *
  * @param string $to      Recipient address.
  * @param string $subject Email subject.
  * @param string $html    HTML body (a plain-text part is auto-derived).
+ * @param array  $params  Additional EmailJS template variables.
  * @return bool True on success, false when SMTP config is missing or the
  *              server rejected the message.
  */
-function sendMail(string $to, string $subject, string $html): bool {
+function sendMail(string $to, string $subject, string $html, array $params = []): bool {
+    $provider = strtolower(trim((string) getenv('EMAIL_PROVIDER')));
+    $hasEmailJsSettings = $provider === 'emailjs'
+        || trim((string) getenv('EMAILJS_SERVICE_ID')) !== ''
+        || trim((string) getenv('EMAILJS_TEMPLATE_ID')) !== ''
+        || trim((string) getenv('EMAILJS_PUBLIC_KEY')) !== '';
+    if ($hasEmailJsSettings) {
+        return sendEmailJsMail($to, $subject, $html, $params);
+    }
+
+    return sendSmtpMail($to, $subject, $html);
+}
+
+/**
+ * Send a message through the EmailJS REST API over HTTPS.
+ *
+ * EmailJS expects the recipient and message to be represented by template
+ * parameters. The common aliases below make the template easy to configure:
+ * use {{to_email}}, {{subject}}, and {{message}} in the EmailJS template.
+ */
+function sendEmailJsMail(string $to, string $subject, string $html, array $templateParams = []): bool {
+    $serviceId = trim((string) getenv('EMAILJS_SERVICE_ID'));
+    $templateId = trim((string) getenv('EMAILJS_TEMPLATE_ID'));
+    $emailType = (string) ($templateParams['email_type'] ?? '');
+    if ($emailType === 'registration_verification') {
+        $templateId = trim((string) (getenv('EMAILJS_VERIFICATION_TEMPLATE_ID') ?: $templateId));
+    } elseif ($emailType === 'password_reset') {
+        $templateId = trim((string) (getenv('EMAILJS_RESET_TEMPLATE_ID') ?: $templateId));
+    }
+    $publicKey = trim((string) getenv('EMAILJS_PUBLIC_KEY'));
+    if ($serviceId === '' || $templateId === '' || $publicKey === '') {
+        error_log('Mailer: EmailJS requires EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, and EMAILJS_PUBLIC_KEY');
+        return false;
+    }
+
+    $text = strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $html));
+    $defaults = [
+        'to_email' => $to,
+        'email' => $to,
+        'subject' => $subject,
+        'message' => $html,
+        'html_message' => $html,
+        'text_message' => $text,
+    ];
+    $params = array_merge($defaults, $templateParams);
+    $payload = [
+        'service_id' => $serviceId,
+        'template_id' => $templateId,
+        'user_id' => $publicKey,
+        'template_params' => $params,
+    ];
+    $privateKey = trim((string) getenv('EMAILJS_PRIVATE_KEY'));
+    if ($privateKey !== '') {
+        $payload['accessToken'] = $privateKey;
+    }
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        error_log('Mailer: could not encode EmailJS request');
+        return false;
+    }
+
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Accept: application/json\r\n"
+                . "Content-Type: application/json\r\n",
+            'content' => $json,
+            'timeout' => 10,
+            'ignore_errors' => true,
+        ],
+        'ssl' => [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+        ],
+    ]);
+
+    $response = @file_get_contents('https://api.emailjs.com/api/v1.0/email/send', false, $context);
+    $status = 0;
+    foreach (($http_response_header ?? []) as $header) {
+        if (preg_match('/^HTTP\/\S+\s+(\d+)/i', $header, $match)) {
+            $status = (int) $match[1];
+            break;
+        }
+    }
+    if ($status >= 200 && $status < 300) {
+        return true;
+    }
+
+    error_log('Mailer: EmailJS rejected message (HTTP ' . $status . ')');
+    return false;
+}
+
+/**
+ * Send a plain-HTML email via SMTP.
+ */
+function sendSmtpMail(string $to, string $subject, string $html): bool {
     if (!smtp_configured()) {
         return false;
     }
@@ -124,7 +222,13 @@ function sendPasswordResetEmail(string $to, string $resetToken, string $expiresA
         . '<p>This code expires on <strong>' . htmlspecialchars($expiryReadable)
         . '</strong>. If you did not request this reset, you can safely ignore '
         . 'this email.</p>';
-    return sendMail($to, $subject, $html);
+    return sendMail($to, $subject, $html, [
+        'email_type' => 'password_reset',
+        'reset_token' => $resetToken,
+        'verification_code' => $resetToken,
+        'code' => $resetToken,
+        'expires_at' => $expiryReadable,
+    ]);
 }
 
 /**
@@ -142,7 +246,13 @@ function sendRegistrationVerificationEmail(string $to, string $verificationToken
         . '<p>This code expires on <strong>' . htmlspecialchars($expiryReadable)
         . '</strong>. If you did not create this account, you can safely ignore '
         . 'this email.</p>';
-    return sendMail($to, $subject, $html);
+    return sendMail($to, $subject, $html, [
+        'email_type' => 'registration_verification',
+        'verification_token' => $verificationToken,
+        'verification_code' => $verificationToken,
+        'code' => $verificationToken,
+        'expires_at' => $expiryReadable,
+    ]);
 }
 
 /**

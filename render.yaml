@@ -52,8 +52,23 @@ services:
       # Health check target (returned by the root endpoint).
       - key: APP_ENV
         value: production
-      # SMTP is used for password recovery and roster email verification.
-      # Keep the account and app password as Render secrets.
+      # Render Free blocks outbound SMTP. Use EmailJS over HTTPS in production.
+      - key: EMAIL_PROVIDER
+        value: emailjs
+      - key: EMAILJS_SERVICE_ID
+        sync: false
+      - key: EMAILJS_TEMPLATE_ID
+        sync: false
+      # Optional separate templates; otherwise EMAILJS_TEMPLATE_ID is reused.
+      - key: EMAILJS_VERIFICATION_TEMPLATE_ID
+        sync: false
+      - key: EMAILJS_RESET_TEMPLATE_ID
+        sync: false
+      - key: EMAILJS_PUBLIC_KEY
+        sync: false
+      - key: EMAILJS_PRIVATE_KEY
+        sync: false
+      # SMTP remains available for local development or a paid Render service.
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
