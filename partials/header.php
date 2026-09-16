@@ -20,7 +20,7 @@ $page_title = isset($page_title) ? $page_title : 'RMC Quiz &amp; Examination —
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/site.css">
-<link rel="icon" href="assets/img/app-icon.jpeg" type="image/jpeg">
+<link rel="icon" href="assets/img/rmc-favicon.png" type="image/png" sizes="any">
 </head>
 <body>
 

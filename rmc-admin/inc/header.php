@@ -40,6 +40,7 @@ function nav_svg(string $inner): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="../assets/img/rmc-favicon.png" type="image/png" sizes="any">
 <title><?php echo e($page_title); ?> — RMC Quiz &amp; Exam</title>
 <script>
 try {
