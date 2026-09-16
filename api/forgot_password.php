@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/validation.php';
+require_once __DIR__ . '/../helpers/email_tokens.php';
 require_once __DIR__ . '/../helpers/mailer.php';
 
 header('Content-Type: application/json');
@@ -40,7 +41,7 @@ try {
     $user = $stmt->fetch();
 
     if ($user && $user['status'] === 'ACTIVE') {
-        $resetToken = bin2hex(random_bytes(16));
+        $resetToken = generateEmailCode();
 
         // Hash the token before storing so a leaked DB dump cannot be used
         // directly. RESET tokens are short-lived (1h) and treated as single-use
@@ -66,10 +67,7 @@ try {
         // without a mail server.
         $sent = sendPasswordResetEmail($user['email'], $resetToken, $expiresAt);
         if (!$sent) {
-            error_log(
-                'QuizSystem password reset (no SMTP): user_id=' . $user['user_id']
-                . ' code=' . $resetToken . ' expires=' . $expiresAt
-            );
+            error_log('Password recovery email delivery failed.');
         }
 
         sendSuccess([

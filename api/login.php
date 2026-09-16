@@ -15,34 +15,45 @@ if (empty($input['password'])) {
 }
 $password = $input['password'];
 
-$usernameGiven = isset($input['username']) ? trim($input['username']) : null;
-$emailGiven = isset($input['email']) ? trim($input['email']) : null;
+// Accept usernames, email addresses and official roster identifiers.
+$identifier = isset($input['identifier']) ? trim((string) $input['identifier']) : '';
+if ($identifier === '') {
+    $identifier = isset($input['username']) ? trim((string) $input['username']) : '';
+}
+if ($identifier === '') {
+    $identifier = isset($input['email']) ? trim((string) $input['email']) : '';
+}
 
-if (!$usernameGiven && !$emailGiven) {
-    sendError('Provide either username or email to log in.', 'MISSING_FIELDS', 422);
+if ($identifier === '') {
+    sendError('Provide your Student No., Employee No., username, or email to log in.', 'MISSING_FIELDS', 422);
 }
 
 $pdo = getDbConnection();
 
 try {
-    if ($usernameGiven) {
-        $stmt = $pdo->prepare(
-            'SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.password_hash, u.status, r.role_name
-             FROM users u JOIN roles r ON r.role_id = u.role_id
-             WHERE u.username = :identifier'
-        );
-        $stmt->execute(['identifier' => $usernameGiven]);
-    } else {
-        $stmt = $pdo->prepare(
-            'SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.password_hash, u.status, r.role_name
-             FROM users u JOIN roles r ON r.role_id = u.role_id
-             WHERE u.email = :identifier'
-        );
-        $stmt->execute(['identifier' => $emailGiven]);
-    }
+    $stmt = $pdo->prepare(
+        'SELECT u.user_id, u.first_name, u.last_name, u.username, u.email,
+                u.password_hash, u.status, r.role_name
+         FROM users u JOIN roles r ON r.role_id = u.role_id
+         WHERE u.username = ?
+            OR u.email = ?
+            OR u.student_id = ?
+            OR u.employee_number = ?
+'
+    );
+    $stmt->execute([$identifier, $identifier, $identifier, $identifier]);
 
-    $user = $stmt->fetch();
-    $invalidCredsMessage = 'Incorrect username/email or password.';
+    $matches = $stmt->fetchAll();
+    $user = null;
+    foreach ($matches as $candidate) {
+        if (!empty($candidate['password_hash']) && password_verify($password, $candidate['password_hash'])) {
+            if ($user !== null) {
+                sendError('This login ID is ambiguous. Please use your email address.', 'AMBIGUOUS_IDENTIFIER', 409);
+            }
+            $user = $candidate;
+        }
+    }
+    $invalidCredsMessage = 'Incorrect login ID or password.';
 
     if (!$user) {
         sendError($invalidCredsMessage, 'INVALID_CREDENTIALS', 401);

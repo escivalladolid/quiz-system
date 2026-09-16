@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/validation.php';
+require_once __DIR__ . '/../helpers/email_tokens.php';
 require_once __DIR__ . '/../helpers/mailer.php';
 
 header('Content-Type: application/json');
@@ -43,7 +44,7 @@ try {
         sendError('Please wait a minute before requesting another verification code.', 'RATE_LIMITED', 429);
     }
 
-    $verificationToken = bin2hex(random_bytes(16));
+    $verificationToken = generateEmailCode();
     $expiresAt = date('Y-m-d H:i:s', time() + 3600);
     $pdo->beginTransaction();
     $stmt = $pdo->prepare('DELETE FROM email_verifications WHERE user_id = ?');

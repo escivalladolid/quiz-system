@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/validation.php';
 require_once __DIR__ . '/../helpers/registration.php';
+require_once __DIR__ . '/../helpers/email_tokens.php';
 require_once __DIR__ . '/../helpers/mailer.php';
 
 header('Content-Type: application/json');
@@ -33,6 +34,10 @@ if (($err = validateEmail($emailGiven)) !== null) {
     sendError($err, 'INVALID_EMAIL', 422);
 }
 
+$requestedUsername = trim((string) ($input['username'] ?? ''));
+if ($requestedUsername !== '' && !preg_match('/^[A-Za-z][A-Za-z0-9_.]{2,29}$/D', $requestedUsername)) {
+    sendError('Username must be 3–30 characters, start with a letter, and contain only letters, numbers, dots or underscores.', 'INVALID_USERNAME', 422);
+}
 $pdo = getDbConnection();
 
 try {
@@ -66,7 +71,12 @@ try {
     }
 
     splitFullName($roster['full_name'], $first, $last);
-    $username = generateUniqueUsername($pdo, $first, $last);
+    $username = $requestedUsername !== '' ? $requestedUsername : generateUniqueUsername($pdo, $first, $last);
+    $usernameCheck = $pdo->prepare('SELECT user_id FROM users WHERE username = ? LIMIT 1');
+    $usernameCheck->execute([$username]);
+    if ($usernameCheck->fetch()) {
+        sendError('That username is already taken. Please choose another.', 'USERNAME_TAKEN', 409);
+    }
     $hash = password_hash($password, PASSWORD_BCRYPT);
     $section = $roster['program'] !== null ? substr(trim($roster['program']), 0, 50) : null;
 
@@ -79,7 +89,7 @@ try {
     $stmt->execute([$first, $last, $username, $emailGiven, $hash, $lrn, $section]);
     $user_id = (int) $pdo->lastInsertId();
 
-    $verificationToken = bin2hex(random_bytes(16));
+    $verificationToken = generateEmailCode();
     $expiresAt = date('Y-m-d H:i:s', time() + 3600);
     $stmt = $pdo->prepare(
         'INSERT INTO email_verifications (user_id, token_hash, expires_at) VALUES (?, ?, ?)'
@@ -110,6 +120,9 @@ try {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
-    error_log('QuizSystem DB Error: ' . $e->getMessage());
+    if ($e instanceof PDOException && (int) ($e->errorInfo[1] ?? 0) === 1062) {
+        sendError('Username, email or roster ID is already registered. Please check your details.', 'ACCOUNT_ALREADY_EXISTS', 409);
+    }
+    error_log('Registration failed: ' . get_class($e));
     sendError('Something went wrong while registering. Please try again.', 'SERVER_ERROR', 500);
 }

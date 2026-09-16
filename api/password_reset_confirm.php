@@ -12,10 +12,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $input = getJsonInput();
 requireFields($input, ['reset_token', 'new_password']);
 
-$resetToken = trim($input['reset_token']);
+$resetTokenInput = trim((string) $input['reset_token']);
 $newPassword = $input['new_password'];
 
-if (strlen($resetToken) < 16 || strlen($resetToken) > 256) {
+if (preg_match('/^[A-HJ-NP-Z2-9]{8}$/i', $resetTokenInput)) {
+    $resetToken = strtoupper($resetTokenInput);
+} elseif (preg_match('/^[a-f0-9]{32}$/i', $resetTokenInput)) {
+    // Accept reset codes issued before the short-code change while they remain valid.
+    $resetToken = strtolower($resetTokenInput);
+} else {
     sendError('Invalid or expired reset code.', 'INVALID_RESET_TOKEN', 422);
 }
 

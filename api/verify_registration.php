@@ -10,9 +10,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $input = getJsonInput();
 requireFields($input, ['verification_token']);
-$token = strtolower(trim((string) $input['verification_token']));
-
-if (!preg_match('/^[a-fA-F0-9]{32}$/', $token)) {
+$tokenInput = trim((string) $input['verification_token']);
+if (preg_match('/^[A-HJ-NP-Z2-9]{8}$/i', $tokenInput)) {
+    $token = strtoupper($tokenInput);
+} elseif (preg_match('/^[a-f0-9]{32}$/i', $tokenInput)) {
+    // Accept codes issued before the short-code change while they remain valid.
+    $token = strtolower($tokenInput);
+} else {
     sendError('The verification code is invalid or expired.', 'INVALID_VERIFICATION_TOKEN', 422);
 }
 
