@@ -163,11 +163,17 @@ $d = admin_api_data($res, ['logs' => [], 'summary' => []], 'System logs', $dashb
 $auditLogs = admin_array_rows($d['logs'] ?? null);
 $auditSummary = admin_array_rows($d['summary'] ?? null);
 
-/* ---------- Login problem reports ---------- */
-$loginReports = [];
-$res = admin_api_request('GET', 'admin/login_problem_reports.php?per_page=100', [], $token);
-$d = admin_api_data($res, ['reports' => []], 'Login problem reports', $dashboard_failures);
-$loginReports = admin_array_rows($d['reports'] ?? null);
+/* ---------- Support / login issues ---------- */
+$supportIssues = [];
+$supportSummary = ['NEW' => 0, 'IN_PROGRESS' => 0, 'RESOLVED' => 0];
+$res = admin_api_request('GET', 'admin/support_issues.php?per_page=100', [], $token);
+$d = admin_api_data($res, ['issues' => [], 'summary' => $supportSummary], 'Support issues', $dashboard_failures);
+$supportIssues = admin_array_rows($d['issues'] ?? null);
+$supportSummaryData = is_array($d['summary'] ?? null) ? $d['summary'] : [];
+foreach ($supportSummary as $key => $value) {
+    $supportSummary[$key] = (int) ($supportSummaryData[$key] ?? 0);
+}
+$supportNewCount = $supportSummary['NEW'];
 
 /* ---------- Maintenance view (health + sessions) ---------- */
 $maint = ['db_now' => null, 'tz_offset_seconds' => 0, 'table_counts' => [], 'sessions' => [],
@@ -287,6 +293,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
     color:#fff;
     border-left:3px solid var(--amber);
   }
+  .nav-count{margin-left:auto;min-width:21px;padding:2px 6px;border-radius:12px;background:var(--danger);color:#fff;text-align:center;font-family:'IBM Plex Mono';font-size:10px;line-height:1.25;}
   .sidebar-foot{
     margin-top:auto;padding:16px 20px 20px 20px;
     border-top:1px solid rgba(255,255,255,0.09);
@@ -677,6 +684,24 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
   .list-toolbar h2{font-size:19px;font-weight:600;margin:0;color:var(--navy-900);}
   .table-tools{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid var(--line);font-size:12px;color:var(--ink-soft);}
 
+  /* ---------- Support / login issues ---------- */
+  .support-stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px;}
+  .support-stat-row .stat-card{margin:0;}
+  .support-intro{font-size:12.5px;color:var(--ink-soft);line-height:1.55;margin:4px 0 0;max-width:680px;}
+  .support-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .support-table td{vertical-align:top;}
+  .support-table .issue-summary{max-width:360px;white-space:normal;line-height:1.4;}
+  .support-table .issue-summary strong{display:block;color:var(--ink);font-weight:600;margin-bottom:3px;}
+  .support-table .issue-summary span{display:block;color:var(--ink-soft);font-size:12px;}
+  .support-type{white-space:nowrap;}
+  .support-type .tag{margin-bottom:4px;}
+  .support-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 18px;margin-top:6px;}
+  .support-detail-item{min-width:0;}
+  .support-detail-item.full{grid-column:1 / -1;}
+  .support-detail-item label{display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;}
+  .support-detail-item p,.support-detail-item pre{margin:0;color:var(--ink);font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}
+  .support-detail-item pre{font-family:'IBM Plex Mono';font-size:11.5px;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:9px;max-height:150px;overflow:auto;}
+
   /* ---------- Health tiles (maintenance) ---------- */
   .health-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px;}
   .health-tile{background:var(--paper-raised);border:1px solid var(--line);border-top:3px solid var(--navy-900);border-radius:var(--radius-card);padding:16px 18px;}
@@ -705,6 +730,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
 
   @media (max-width: 1180px){
     .stat-row{grid-template-columns:repeat(2,1fr);}
+    .support-stat-row{grid-template-columns:repeat(2,1fr);}
   }
 
   @media (max-width: 880px){
@@ -731,6 +757,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
     .stat-row{grid-template-columns:repeat(2,1fr);gap:10px;}
     .stat-card{padding:14px 14px 12px 14px;}
     .stat-card .stat-value{font-size:22px;}
+    .support-stat-row{grid-template-columns:repeat(2,1fr);gap:10px;}
     .content{padding:16px 14px 44px 14px;}
     .toolbar{flex-direction:column;align-items:stretch;}
     .toolbar-left{flex-wrap:wrap;}
@@ -740,6 +767,9 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
 
   @media (max-width: 460px){
     .stat-row{grid-template-columns:1fr;}
+    .support-stat-row{grid-template-columns:1fr;}
+    .support-detail-grid{grid-template-columns:1fr;}
+    .support-detail-item.full{grid-column:auto;}
     .admin-chip .chip-text{display:none;}
     .admin-chip{padding:6px;}
     .admin-dropdown{right:-6px;}
@@ -779,6 +809,11 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
       <li class="nav-item active" data-view="dashboard">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
         Dashboard
+      </li>
+      <li class="nav-item" data-view="support">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.5 9.7 9.7 0 0 1-4-.8L3 21l1.8-4.5A8.3 8.3 0 0 1 3 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z"/><path d="M8 11h.01M12 11h.01M16 11h.01"/></svg>
+        Support &amp; Login Issues
+        <?php if ($supportNewCount > 0): ?><span class="nav-count" aria-label="<?php echo $supportNewCount; ?> new support issues"><?php echo $supportNewCount > 99 ? '99+' : $supportNewCount; ?></span><?php endif; ?>
       </li>
     </ul>
 
@@ -1421,31 +1456,119 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
            </table>
            </div>
          </div>
-         <div class="table-panel" style="margin-top:18px;">
-           <div class="table-tools"><span>Login problem reports</span><span class="muted"><?php echo number_format(count($loginReports)); ?> shown</span></div>
-           <div class="table-scroll">
-           <table id="loginProblemTable">
-             <thead><tr><th>When</th><th>Contact</th><th>Role / step</th><th>Description</th><th>Status</th></tr></thead>
-             <tbody>
-               <?php foreach ($loginReports as $report): ?>
-                 <?php $reportStatus = strtoupper((string) ($report['status'] ?? 'OPEN')); ?>
-                 <tr>
-                   <td class="mono" style="white-space:nowrap;font-size:12px;color:var(--ink-soft);"><?php echo e(date('M j, Y g:i A', strtotime($report['created_at'] ?? ''))); ?></td>
-                   <td><?php echo e($report['contact'] ?? ''); ?></td>
-                   <td><strong><?php echo e($report['role'] ?? 'UNKNOWN'); ?></strong><br><span style="font-size:11px;color:var(--ink-soft);"><?php echo e($report['step'] ?? ''); ?></span></td>
-                   <td style="max-width:420px;white-space:normal;color:var(--ink-soft);"><?php echo e($report['description'] ?? ''); ?></td>
-                   <td><span class="tag <?php echo $reportStatus === 'RESOLVED' ? 'tag-pass' : 'tag-royal'; ?>"><?php echo e($reportStatus); ?></span></td>
-                 </tr>
-               <?php endforeach; ?>
-               <?php if (!count($loginReports)): ?><tr><td colspan="5" class="id-cell" style="text-align:center;padding:20px;color:var(--ink-soft);">No login problem reports.</td></tr><?php endif; ?>
-             </tbody>
-           </table>
-           </div>
-         </div>
        </div>
      </div>
 
-     <!-- ============ REPORTS VIEW ============ -->
+      <!-- ============ SUPPORT / LOGIN ISSUES VIEW ============ -->
+      <div class="view" id="view-support">
+        <div class="topbar">
+          <div class="topbar-title">
+            <div class="hamburger" onclick="toggleSidebar()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </div>
+            <div>
+              <h1>Support &amp; Login Issues</h1>
+              <div class="page-sub">One queue for verification email failures and student-reported login problems</div>
+            </div>
+          </div>
+          <div class="topbar-right">
+            <div class="admin-menu">
+              <div class="admin-chip" onclick="toggleAdminMenu(this)">
+                <div class="avatar"><?php echo e($avatarChar); ?></div>
+                <div class="chip-text"><strong><?php echo e($adminShort); ?></strong><span>Administrator</span></div>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chip-caret"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+              <div class="admin-dropdown">
+                <div class="admin-dropdown-divider"></div>
+                <form class="admin-logout-form" method="post" action="<?= e(admin_url('logout')) ?>">
+                  <input type="hidden" name="csrf_token" value="<?= e(admin_csrf_token()) ?>">
+                  <button class="admin-dropdown-item logout" type="submit">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Log Out
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="content">
+          <div class="list-toolbar">
+            <div>
+              <h2>Support queue</h2>
+              <p class="support-intro">Review the newest issues first, open an entry for its full context, and keep the status up to date while it is being handled.</p>
+            </div>
+            <button class="btn btn-ghost" type="button" onclick="window.location.reload()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8.1 8.1 0 0 0-14.9-4L3 10"/><path d="M3 4v6h6"/><path d="M4 13a8.1 8.1 0 0 0 14.9 4L21 14"/><path d="M21 20v-6h-6"/></svg>
+              Refresh
+            </button>
+          </div>
+
+          <div class="support-stat-row">
+            <div class="stat-card accent"><div class="stat-label">New</div><div class="stat-value"><?php echo number_format($supportSummary['NEW']); ?></div><div class="stat-delta flat">Needs review</div></div>
+            <div class="stat-card"><div class="stat-label">In progress</div><div class="stat-value"><?php echo number_format($supportSummary['IN_PROGRESS']); ?></div><div class="stat-delta flat">Being handled</div></div>
+            <div class="stat-card"><div class="stat-label">Resolved</div><div class="stat-value"><?php echo number_format($supportSummary['RESOLVED']); ?></div><div class="stat-delta flat">Closed by an admin</div></div>
+            <div class="stat-card"><div class="stat-label">All issues</div><div class="stat-value"><?php echo number_format(array_sum($supportSummary)); ?></div><div class="stat-delta flat">System + student reports</div></div>
+          </div>
+
+          <div class="toolbar">
+            <div class="support-filters">
+              <span class="filter-chip support-status-chip active" data-filter="All">All</span>
+              <span class="filter-chip support-status-chip" data-filter="NEW">New</span>
+              <span class="filter-chip support-status-chip" data-filter="IN_PROGRESS">In progress</span>
+              <span class="filter-chip support-status-chip" data-filter="RESOLVED">Resolved</span>
+              <span class="filter-chip support-type-chip active" data-filter="All">All types</span>
+              <span class="filter-chip support-type-chip" data-filter="SYSTEM_ALERT">System alerts</span>
+              <span class="filter-chip support-type-chip" data-filter="STUDENT_REPORT">Student reports</span>
+            </div>
+            <div class="search-box" style="width:250px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="search" placeholder="Search issues…" id="supportSearch">
+            </div>
+          </div>
+
+          <div class="table-panel">
+            <div class="table-tools"><span><?php echo number_format(count($supportIssues)); ?> issue<?php echo count($supportIssues) === 1 ? '' : 's'; ?> shown</span><span class="muted">newest first</span></div>
+            <div class="table-scroll">
+              <table id="supportTable" class="support-table">
+                <thead><tr><th>Type</th><th>When</th><th>Affected student / contact</th><th>Issue</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  <?php foreach ($supportIssues as $supportIndex => $issue): ?>
+                    <?php
+                      $issueType = strtoupper((string) ($issue['issue_type'] ?? ''));
+                      $issueStatus = strtoupper((string) ($issue['status'] ?? 'NEW'));
+                      $statusLabel = $issueStatus === 'IN_PROGRESS' ? 'In progress' : ($issueStatus === 'RESOLVED' ? 'Resolved' : 'New');
+                      $statusClass = $issueStatus === 'RESOLVED' ? 'tag-pass' : ($issueStatus === 'IN_PROGRESS' ? 'tag-amber' : 'tag-royal');
+                      $typeLabel = $issueType === 'SYSTEM_ALERT' ? 'System alert' : 'Student report';
+                      $typeClass = $issueType === 'SYSTEM_ALERT' ? 'tag-fail' : 'tag-royal';
+                      $issueTitle = $issueType === 'SYSTEM_ALERT'
+                          ? ucwords(strtolower(str_replace('_', ' ', (string) ($issue['alert_type'] ?? 'Email failure'))))
+                          : ((string) ($issue['step'] ?? 'Login problem'));
+                      $affected = trim((string) ($issue['affected_identifier'] ?? ''));
+                      if ($affected === '') $affected = $issueType === 'SYSTEM_ALERT' && !empty($issue['affected_user_id']) ? 'User #' . (int) $issue['affected_user_id'] : '—';
+                      $createdTs = strtotime((string) ($issue['created_at'] ?? ''));
+                      $when = $createdTs ? date('M j, Y g:i A', $createdTs) : '—';
+                      $searchText = strtolower($typeLabel . ' ' . $issueTitle . ' ' . $affected . ' ' . ($issue['description'] ?? '') . ' ' . ($issue['role'] ?? '') . ' ' . ($issue['screen'] ?? ''));
+                    ?>
+                    <tr data-issue-row data-type="<?php echo e($issueType); ?>" data-status="<?php echo e($issueStatus); ?>" data-search="<?php echo e($searchText); ?>">
+                      <td class="support-type"><span class="tag <?php echo $typeClass; ?>"><?php echo e($typeLabel); ?></span><?php if ($issueType === 'SYSTEM_ALERT' && !empty($issue['severity'])): ?><div style="font-size:11px;color:var(--ink-soft);"><?php echo e($issue['severity']); ?></div><?php endif; ?></td>
+                      <td class="mono" style="white-space:nowrap;font-size:11.5px;color:var(--ink-soft);"><?php echo e($when); ?></td>
+                      <td><strong style="font-weight:600;"><?php echo e($affected); ?></strong><?php if ($issueType === 'STUDENT_REPORT' && !empty($issue['role'])): ?><div style="font-size:11px;color:var(--ink-soft);"><?php echo e($issue['role']); ?></div><?php endif; ?></td>
+                      <td class="issue-summary"><strong><?php echo e($issueTitle); ?></strong><span><?php echo e(mb_strimwidth((string) ($issue['description'] ?? ''), 0, 180, '…')); ?></span></td>
+                      <td><span class="tag <?php echo $statusClass; ?>"><?php echo e($statusLabel); ?></span></td>
+                      <td style="text-align:right;"><button type="button" class="btn btn-ghost btn-sm support-open" data-support-index="<?php echo (int) $supportIndex; ?>">View details</button></td>
+                    </tr>
+                  <?php endforeach; ?>
+                  <?php if (!count($supportIssues)): ?><tr data-empty-support><td colspan="6" class="empty-state"><span class="big">✓</span>No support issues have been reported.</td></tr><?php endif; ?>
+                  <?php if (count($supportIssues)): ?><tr data-support-filter-empty style="display:none;"><td colspan="6" class="empty-state">No issues match these filters.</td></tr><?php endif; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ REPORTS VIEW ============ -->
     <div class="view" id="view-reports">
       <div class="topbar">
         <div class="topbar-title">
@@ -1992,6 +2115,33 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
   </div>
 </div>
 
+<!-- ============ SUPPORT ISSUE MODAL ============ -->
+<div class="modal-backdrop" id="modal-support">
+  <div class="modal" style="max-width:680px;width:100%;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
+      <div>
+        <h3 id="supportModalTitle">Support issue</h3>
+        <div class="modal-sub" id="supportModalSub" style="margin-bottom:0;"></div>
+      </div>
+      <span class="tag tag-dim" id="supportModalType">Issue</span>
+    </div>
+    <div class="modal-alert" id="supportModalAlert"></div>
+    <div class="support-detail-grid" style="margin-top:20px;">
+      <div class="support-detail-item"><label>When</label><p id="supportDetailWhen">—</p></div>
+      <div class="support-detail-item"><label>Affected student / contact</label><p id="supportDetailAffected">—</p></div>
+      <div class="support-detail-item"><label>Role or severity</label><p id="supportDetailRole">—</p></div>
+      <div class="support-detail-item"><label>Screen / step</label><p id="supportDetailStep">—</p></div>
+      <div class="support-detail-item full"><label>Description</label><p id="supportDetailDescription">—</p></div>
+      <div class="support-detail-item full"><label>Technical details</label><pre id="supportDetailTechnical">No additional details.</pre></div>
+      <div class="support-detail-item full field"><label for="supportStatus">Status</label><select class="input" id="supportStatus"><option value="NEW">New</option><option value="IN_PROGRESS">In progress</option><option value="RESOLVED">Resolved</option></select></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" type="button" data-close-m="modal-support">Close</button>
+      <button class="btn btn-amber" type="button" id="supportSave">Save status</button>
+    </div>
+  </div>
+</div>
+
 <script>
   var RMC_ADMIN = <?php echo admin_json_for_script([
       'name' => $adminShort,
@@ -2002,6 +2152,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
   window.CLASSES = <?php echo admin_json_for_script($classesAll); ?>;
   window.TEACHERS = <?php echo admin_json_for_script($teachers); ?>;
   window.EXAMS   = <?php echo admin_json_for_script($examsAll); ?>;
+  window.SUPPORT_ISSUES = <?php echo admin_json_for_script($supportIssues); ?>;
 
   function toggleSidebar(){
     document.getElementById('sidebar').classList.toggle('open');
@@ -2692,6 +2843,104 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
   logSearch.addEventListener('input', applyLogFilter);
   logFrom.addEventListener('change', applyLogFilter);
   logTo.addEventListener('change', applyLogFilter);
+
+  /* ---------- SUPPORT / LOGIN ISSUES ---------- */
+  var supportIssues = Array.isArray(window.SUPPORT_ISSUES) ? window.SUPPORT_ISSUES : [];
+  var currentSupportIssue = null;
+  var supportTable = document.getElementById('supportTable');
+  var supportSearch = document.getElementById('supportSearch');
+  function applySupportFilter(){
+    if (!supportTable) return;
+    var statusChip = document.querySelector('#view-support .support-status-chip.active');
+    var typeChip = document.querySelector('#view-support .support-type-chip.active');
+    var status = statusChip ? (statusChip.getAttribute('data-filter') || 'All') : 'All';
+    var type = typeChip ? (typeChip.getAttribute('data-filter') || 'All') : 'All';
+    var q = supportSearch ? (supportSearch.value || '').toLowerCase().trim() : '';
+    var visible = 0;
+    supportTable.querySelectorAll('tbody tr[data-issue-row]').forEach(function(tr){
+      var matches = (status === 'All' || tr.getAttribute('data-status') === status)
+        && (type === 'All' || tr.getAttribute('data-type') === type)
+        && (!q || (tr.getAttribute('data-search') || '').indexOf(q) !== -1);
+      tr.style.display = matches ? '' : 'none';
+      if (matches) visible++;
+    });
+    var empty = supportTable.querySelector('[data-support-filter-empty]');
+    if (empty) empty.style.display = visible ? 'none' : '';
+  }
+  document.querySelectorAll('#view-support .support-status-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      document.querySelectorAll('#view-support .support-status-chip').forEach(function(c){ c.classList.remove('active'); });
+      chip.classList.add('active');
+      applySupportFilter();
+    });
+  });
+  document.querySelectorAll('#view-support .support-type-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      document.querySelectorAll('#view-support .support-type-chip').forEach(function(c){ c.classList.remove('active'); });
+      chip.classList.add('active');
+      applySupportFilter();
+    });
+  });
+  if (supportSearch) supportSearch.addEventListener('input', applySupportFilter);
+  function supportValue(value){ return value === null || value === undefined || String(value) === '' ? '—' : String(value); }
+  function openSupportIssue(index){
+    var issue = supportIssues[index];
+    if (!issue) return;
+    currentSupportIssue = issue;
+    var system = issue.issue_type === 'SYSTEM_ALERT';
+    var title = system ? (issue.alert_type || 'System alert') : (issue.step || 'Login problem');
+    document.getElementById('supportModalTitle').textContent = title;
+    document.getElementById('supportModalSub').textContent = (system ? 'System alert' : 'Student report') + ' #' + issue.issue_id;
+    var typeBadge = document.getElementById('supportModalType');
+    typeBadge.textContent = system ? 'System alert' : 'Student report';
+    typeBadge.className = 'tag ' + (system ? 'tag-fail' : 'tag-royal');
+    document.getElementById('supportDetailWhen').textContent = dstr(issue.created_at) || '—';
+    document.getElementById('supportDetailAffected').textContent = supportValue(issue.affected_identifier || issue.contact || (issue.affected_user_id ? 'User #' + issue.affected_user_id : ''));
+    document.getElementById('supportDetailRole').textContent = supportValue(system ? issue.severity : issue.role);
+    document.getElementById('supportDetailStep').textContent = supportValue(system ? (issue.alert_type || '') : ((issue.screen || '') + (issue.screen && issue.step ? ' · ' : '') + (issue.step || '')));
+    document.getElementById('supportDetailDescription').textContent = supportValue(issue.description);
+    var technical = {};
+    if (system && issue.details && typeof issue.details === 'object') technical = issue.details;
+    if (!system) {
+      if (issue.app_version) technical.app_version = issue.app_version;
+      if (issue.device_info) technical.device_info = issue.device_info;
+    }
+    document.getElementById('supportDetailTechnical').textContent = Object.keys(technical).length ? JSON.stringify(technical, null, 2) : 'No additional details.';
+    document.getElementById('supportStatus').value = ['NEW','IN_PROGRESS','RESOLVED'].indexOf(issue.status) !== -1 ? issue.status : 'NEW';
+    document.getElementById('supportModalAlert').classList.remove('show');
+    document.getElementById('supportSave').disabled = false;
+    openMd('modal-support');
+  }
+  if (supportTable) supportTable.addEventListener('click', function(e){
+    var btn = e.target.closest('.support-open');
+    if (!btn) return;
+    openSupportIssue(Number(btn.getAttribute('data-support-index')));
+  });
+  var supportSave = document.getElementById('supportSave');
+  if (supportSave) supportSave.addEventListener('click', function(){
+    if (!currentSupportIssue) return;
+    var status = document.getElementById('supportStatus').value;
+    var btn = this;
+    btn.disabled = true;
+    postAjax('support_issue_update', {
+      issue_type: currentSupportIssue.issue_type,
+      issue_id: Number(currentSupportIssue.issue_id),
+      status: status
+    }).then(function(res){
+      if (res.success) {
+        window.location.reload();
+      } else {
+        document.getElementById('supportModalAlert').textContent = res.error || 'Could not update this issue.';
+        document.getElementById('supportModalAlert').classList.add('show');
+        btn.disabled = false;
+      }
+    }).catch(function(){
+      document.getElementById('supportModalAlert').textContent = 'Network error. Please try again.';
+      document.getElementById('supportModalAlert').classList.add('show');
+      btn.disabled = false;
+    });
+  });
+  applySupportFilter();
 
   /* ---------- MAINTENANCE ---------- */
   var lastKill = null;

@@ -5,6 +5,7 @@ require_once __DIR__ . '/../helpers/validation.php';
 require_once __DIR__ . '/../helpers/registration.php';
 require_once __DIR__ . '/../helpers/email_tokens.php';
 require_once __DIR__ . '/../helpers/mailer.php';
+require_once __DIR__ . '/../helpers/system_alerts.php';
 
 header('Content-Type: application/json');
 
@@ -97,6 +98,18 @@ try {
 
     if (!sendRegistrationVerificationEmail($emailGiven, $verificationToken, $expiresAt)) {
         $pdo->rollBack();
+        recordSystemAlert(
+            $pdo,
+            'VERIFICATION_EMAIL_FAILURE',
+            'Verification email delivery failed during teacher registration.',
+            null,
+            $employeeNumber,
+            [
+                'operation' => 'teacher_registration',
+                'provider' => trim((string) (getenv('EMAIL_PROVIDER') ?: 'smtp')),
+                'email_status' => 503,
+            ]
+        );
         sendError('We could not send the verification email right now. Please try again later.', 'EMAIL_DELIVERY_UNAVAILABLE', 503);
     }
 

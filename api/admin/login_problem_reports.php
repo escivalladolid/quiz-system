@@ -17,7 +17,7 @@ $page = max(1, (int) ($_GET['page'] ?? 1));
 $perPage = min(100, max(1, (int) ($_GET['per_page'] ?? 50)));
 $where = [];
 $params = [];
-if (in_array($status, ['OPEN', 'RESOLVED'], true)) {
+if (in_array($status, ['OPEN', 'IN_PROGRESS', 'RESOLVED'], true)) {
     $where[] = 'status = :status';
     $params['status'] = $status;
 }

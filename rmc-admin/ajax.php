@@ -31,6 +31,8 @@ $routes = [
     'exam_detail'         => ['GET', 'admin/exam_detail.php'],
     'session_kill'        => ['POST', 'admin/session_kill.php'],
     'login_problem_reports' => ['GET', 'admin/login_problem_reports.php'],
+    'support_issues'      => ['GET', 'admin/support_issues.php'],
+    'support_issue_update' => ['POST', 'admin/support_issue_update.php'],
 ];
 
 $action = $_GET['action'] ?? '';
@@ -100,6 +102,8 @@ if ($ok) {
         admin_flash_set('success', 'Student roster imported.');
     } elseif ($action === 'roster_import_teacher') {
         admin_flash_set('success', 'Teacher roster imported.');
+    } elseif ($action === 'support_issue_update') {
+        admin_flash_set('success', 'Support issue status updated.');
     }
 }
 

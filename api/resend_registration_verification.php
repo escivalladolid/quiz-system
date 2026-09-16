@@ -4,6 +4,7 @@ require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/validation.php';
 require_once __DIR__ . '/../helpers/email_tokens.php';
 require_once __DIR__ . '/../helpers/mailer.php';
+require_once __DIR__ . '/../helpers/system_alerts.php';
 
 header('Content-Type: application/json');
 
@@ -22,7 +23,7 @@ $pdo = getDbConnection();
 
 try {
     $stmt = $pdo->prepare(
-        "SELECT user_id, first_name, status
+        "SELECT user_id, first_name, status, student_id, employee_number
          FROM users
          WHERE email = ? AND role_id IN (1, 2)
          LIMIT 1"
@@ -56,6 +57,20 @@ try {
 
     if (!sendRegistrationVerificationEmail($email, $verificationToken, $expiresAt)) {
         $pdo->rollBack();
+        $identifier = trim((string) ($user['student_id'] ?? ''));
+        if ($identifier === '') $identifier = trim((string) ($user['employee_number'] ?? ''));
+        recordSystemAlert(
+            $pdo,
+            'VERIFICATION_EMAIL_FAILURE',
+            'Verification email delivery failed while resending a registration code.',
+            (int) $user['user_id'],
+            $identifier !== '' ? $identifier : null,
+            [
+                'operation' => 'registration_verification_resend',
+                'provider' => trim((string) (getenv('EMAIL_PROVIDER') ?: 'smtp')),
+                'email_status' => 503,
+            ]
+        );
         sendError('We could not send the verification email right now. Please try again later.', 'EMAIL_DELIVERY_UNAVAILABLE', 503);
     }
     $pdo->commit();
