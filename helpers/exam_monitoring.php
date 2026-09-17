@@ -30,6 +30,7 @@ function examMonitoringStatusForEvent(string $eventType): string {
     switch ($eventType) {
         case 'BACKGROUND':
         case 'TAB_SWITCH':
+        case 'MULTI_WINDOW':
             return 'AWAY';
         case 'NETWORK_LOST':
             return 'OFFLINE';
@@ -51,7 +52,8 @@ function recordExamActivity(PDO $pdo, int $examId, int $userId, string $eventTyp
     $allowed = [
         'EXAM_STARTED', 'HEARTBEAT', 'ACTIVE', 'BACKGROUND',
         'NETWORK_LOST', 'NETWORK_RESTORED', 'QUESTION_VIEWED',
-        'ANSWER_CHANGED', 'TAB_SWITCH', 'SUBMITTED', 'CLOSED'
+        'ANSWER_CHANGED', 'TAB_SWITCH', 'SCREENSHOT', 'SCREEN_RECORDING',
+        'MULTI_WINDOW', 'SUBMITTED', 'CLOSED'
     ];
     if (!in_array($eventType, $allowed, true)) $eventType = 'HEARTBEAT';
 

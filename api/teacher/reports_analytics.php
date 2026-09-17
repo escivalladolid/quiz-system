@@ -68,9 +68,28 @@ try {
     $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // All submissions for target exams
-    $stmt = $pdo->prepare("SELECT es.user_id, es.exam_id, es.score, es.correct_count, es.total_questions, es.answers_json FROM exam_submissions es WHERE es.exam_id IN ($placeholders)");
+    $stmt = $pdo->prepare("SELECT es.user_id, es.exam_id, es.score, es.correct_count, es.total_questions, es.answers_json, es.time_used_secs, es.exit_attempts, es.auto_submitted, es.submitted_at FROM exam_submissions es WHERE es.exam_id IN ($placeholders)");
     $stmt->execute($target_ids);
     $all_submissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Proctoring telemetry is optional. Report exports still work when an
+    // older database has not installed the monitoring migration.
+    $activity_flag_map = [];
+    try {
+        $activityStmt = $pdo->prepare(
+            "SELECT exam_id, user_id, COUNT(*) AS flag_count
+             FROM exam_activity_log
+             WHERE exam_id IN ($placeholders)
+               AND event_type IN ('TAB_SWITCH','MULTI_WINDOW','SCREENSHOT','SCREEN_RECORDING','CLOSED')
+             GROUP BY exam_id, user_id"
+        );
+        $activityStmt->execute($target_ids);
+        while ($activity = $activityStmt->fetch(PDO::FETCH_ASSOC)) {
+            $activity_flag_map[$activity['exam_id'] . ':' . $activity['user_id']] = (int) $activity['flag_count'];
+        }
+    } catch (PDOException $ignored) {
+        // Fall back to the exit_attempts value stored with each submission.
+    }
 
     // Group submissions by user
     $user_subs = [];
@@ -106,6 +125,8 @@ try {
     $overall_pct_count = 0;
     $pass_count = 0;
     $fail_count = 0;
+    $flagged_student_count = 0;
+    $total_flag_count = 0;
 
     foreach ($students as $stu) {
         $uid = $stu['user_id'];
@@ -120,6 +141,9 @@ try {
                 'total'      => 0,
                 'percentage' => 0,
                 'passed'     => false,
+                'time_used_secs' => null,
+                'flag_count' => 0,
+                'auto_submitted' => false,
             ];
             continue;
         }
@@ -129,6 +153,10 @@ try {
         $pct_count = 0;
         $total_score = 0;
         $total_points_total = 0;
+        $total_time_used = 0;
+        $has_time_used = false;
+        $student_flag_count = 0;
+        $student_auto_submitted = false;
         $all_passed = true;
 
 foreach ($subs as $s) {
@@ -144,6 +172,16 @@ foreach ($subs as $s) {
             $total_score += $score;
             $total_points_total += $tp;
 
+            if ($s['time_used_secs'] !== null && $s['time_used_secs'] !== '') {
+                $total_time_used += max(0, (int) $s['time_used_secs']);
+                $has_time_used = true;
+            }
+            $activityFlags = (int) ($activity_flag_map[$s['exam_id'] . ':' . $uid] ?? 0);
+            // Avoid double-counting the same exit when both telemetry and the
+            // legacy submission counter contain it.
+            $student_flag_count += max($activityFlags, (int) ($s['exit_attempts'] ?? 0));
+            $student_auto_submitted = $student_auto_submitted || !empty($s['auto_submitted']);
+
             // Check pass/fail per exam (percentage >= passing_score)
             $passing = $passing_map[$s['exam_id']] ?? 0;
             if ($passing > 0 && $pct < $passing) {
@@ -158,6 +196,9 @@ foreach ($subs as $s) {
         if ($all_passed) $pass_count++;
         else $fail_count++;
 
+        if ($student_flag_count > 0) $flagged_student_count++;
+        $total_flag_count += $student_flag_count;
+
         $student_results[] = [
             'user_id'    => $uid,
             'first_name' => $stu['first_name'],
@@ -166,6 +207,9 @@ foreach ($subs as $s) {
             'total'      => $total_points_total,
             'percentage' => $avg_pct,
             'passed'     => $all_passed,
+            'time_used_secs' => $has_time_used ? $total_time_used : null,
+            'flag_count' => $student_flag_count,
+            'auto_submitted' => $student_auto_submitted,
         ];
     }
 
@@ -175,6 +219,8 @@ foreach ($subs as $s) {
         'highest'   => !empty($all_pcts) ? max($all_pcts) : 0,
         'lowest'    => !empty($all_pcts) ? min($all_pcts) : 0,
         'pass_rate' => ($pass_count + $fail_count) > 0 ? round(($pass_count / ($pass_count + $fail_count)) * 100, 1) : 0,
+        'flagged_count' => $total_flag_count,
+        'flagged_students' => $flagged_student_count,
     ];
 
     // --- Pass vs Fail ---

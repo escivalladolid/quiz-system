@@ -45,6 +45,10 @@ Start-Process -FilePath ".\venv\Scripts\python.exe" `
 - Submit flow merges auto-saved answers from `exam_temp_answers` so fast submits don't drop answers; `exam_submissions` is idempotent (return existing submission on resubmit).
 - `Backend-PHP/database/migration_score_raw_points.sql` rescales legacy stored scores (previously scaled onto `exams.total_points`) back to raw earned points.
 
+## Teacher report output (2026-09-17)
+- The Android teacher Reports & Analytics screen uses `ReportPrintHelper` for all output. PDF export and Print share the same fixed A4 layout: metric cards, a repeated student-table header, non-splitting fixed-height rows, and page-number footers. The Excel action writes a real XLSX with a separate Summary sheet, numeric score/time/flag cells, a bold frozen/filterable results header, and bounded auto-fit column widths.
+- `api/teacher/reports_analytics.php` includes `time_used_secs`, `flag_count`, and `auto_submitted` per student. Activity-log telemetry is optional; `exit_attempts` remains the fallback when the live-monitoring migration is not installed.
+
 ## Admin Web Panel (2026-09-08)
 - Public landing page ships as `Backend-PHP/index.html` (single-file, self-contained design; strip labels: BSED / BEED / BSCS / BSOA). Admin access links point to `rmc-admin/login.php`; nav "Get the app" and Play buttons anchor to `#contact` until a real store URL exists. `partials/header.php` + `partials/footer.php` + `assets/css/site.css` are an unused older landing design — do not treat as the live page.
 - RMC Quiz & Exam admin panel lives in `Backend-PHP/rmc-admin/` (deployed to Render together with the backend later). v3 palette: navy `#0A1F44`, royal `#1E4FA0`, amber accent `#E8A33D` (unified panel-wide with the standalone dashboard; `assets/admin.css` accent tokens are amber, renamed from the old amber→blue restyle). Fraunces (headings) / Inter (UI) / IBM Plex Mono (data). No build step — plain PHP + HTML/CSS/JS. `login.php` is self-contained (own inline `<style>`, no admin.css link; back link `../index.html`); the shell (`inc/header.php` + `inc/footer.php`) styles live in `assets/admin.css`.

@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_grading.php';
 require_once __DIR__ . '/../../helpers/exam_builder.php';
+require_once __DIR__ . '/../../helpers/exam_status.php';
 
 header('Content-Type: application/json');
 
@@ -23,6 +24,12 @@ if (!$input) {
 
 requireFields($input, ['class_id', 'exam_name', 'duration_minutes', 'passing_score']);
 
+$input['duration_minutes'] = validateExamDuration($input['duration_minutes']);
+$input['passing_score'] = filter_var($input['passing_score'], FILTER_VALIDATE_INT);
+if ($input['passing_score'] === false || $input['passing_score'] < 1 || $input['passing_score'] > 100) {
+    sendError('Passing score must be between 1 and 100.', 'BAD_REQUEST', 422);
+}
+
 try {
     $stmt = $pdo->prepare("SELECT class_id FROM classes WHERE class_id=? AND teacher_id=?");
     $stmt->execute([$input['class_id'], $teacher_id]);
@@ -38,23 +45,18 @@ try {
         $status = 'DRAFT';
     }
 
-    $startTime = !empty($input['start_time']) ? $input['start_time'] : null;
-    $endTime = !empty($input['end_time']) ? $input['end_time'] : null;
+    $startTime = normalizeExamDateTime($input['start_time'] ?? null, 'Availability start time');
+    $endTime = normalizeExamDateTime($input['end_time'] ?? null, 'Availability end time');
+    validateExamAvailability($startTime, $endTime);
 
     if ($status === 'SCHEDULED') {
-        $startTime = $input['start_time'] ?? null;
-        $endTime = $input['end_time'] ?? null;
-
         if ($startTime === null || $startTime === '') {
             $startTime = $pdo->query('SELECT NOW()')->fetchColumn(); // server time
         }
-        // Unlimited exams (0 minutes) stay open until manually closed.
-        if ($endTime === null || $endTime === '') {
-            $duration = (int) $input['duration_minutes'];
-            $endTime = ($duration > 0)
-                ? date('Y-m-d H:i:s', strtotime($startTime . ' + ' . $duration . ' minutes'))
-                : null;
-        }
+        // Availability is independent of the per-student duration. A blank
+        // end time means the exam remains available until manually closed;
+        // duration_minutes still limits each student's individual attempt.
+        validateExamAvailability($startTime, $endTime);
     }
 
     if (true) {

@@ -92,10 +92,7 @@ if ($existingSub) {
     sendSuccess($receipt);
 }
 
-// If the exam closed (manually or automatically), reject further submissions.
-if (strtoupper((string)$exam['status']) !== 'LIVE') {
-    sendError('Exam closed. Further submissions are rejected.', 'EXAM_CLOSED', 403);
-}
+$examStatus = strtoupper((string) ($exam['status'] ?? ''));
 
 // Verify enrollment
 $enrollCheck = $pdo->prepare('SELECT 1 FROM enrollments WHERE user_id = :uid AND class_id = :cid');
@@ -117,9 +114,9 @@ foreach (['exam_attempts', 'exam_answer_revisions'] as $tableName) {
     }
 }
 
-// The student must start the exam (exam_start.php action=start) and may only
-// submit while their OWN deadline is still open. A closed exam is handled
-// above, so a late submit after global close is still accepted (finalize).
+// The student must start the exam (exam_start.php action=start). A submission
+// that arrives after the individual deadline or availability close is the
+// expected auto-finalization path for that already-started attempt.
 $attemptStmt = $pdo->prepare(
     'SELECT started_at, deadline_at FROM exam_attempts WHERE exam_id = :eid AND user_id = :uid'
 );
@@ -127,14 +124,26 @@ $attemptStmt->execute(['eid' => $examId, 'uid' => $user['user_id']]);
 $attempt = $attemptStmt->fetch();
 
 if (!$attempt) {
-    sendError('Start the exam before submitting.', 'ATTEMPT_NOT_STARTED', 403);
+    sendError(
+        $examStatus === 'LIVE' ? 'Start the exam before submitting.' : 'This exam is closed.',
+        $examStatus === 'LIVE' ? 'ATTEMPT_NOT_STARTED' : 'EXAM_CLOSED',
+        403
+    );
 }
 
 $deadlineAt = $attempt['deadline_at'];
 $now = date('Y-m-d H:i:s');
-if ($deadlineAt && $deadlineAt !== '2099-12-31 23:59:59' && strtotime($deadlineAt) < strtotime($now)) {
+$deadlineExpired = $deadlineAt && $deadlineAt !== '2099-12-31 23:59:59'
+    && strtotime($deadlineAt) < strtotime($now);
+if ($deadlineExpired && !$autoSubmitted && $examStatus === 'LIVE') {
     sendError('Your time for this exam has expired.', 'EXAM_TIME_EXPIRED', 403);
 }
+
+// A request that arrives just after the individual timer or availability
+// window closes is the expected auto-submit path. Finalize the already-started
+// attempt instead of rejecting it; the server marks the receipt as automatic
+// regardless of whether the client managed to set the flag before losing focus.
+$finalAutoSubmitted = $autoSubmitted || $examStatus !== 'LIVE' || (bool) $deadlineExpired;
 
 // Fetch all questions for this exam
 $qStmt = $pdo->prepare(
@@ -196,7 +205,7 @@ try {
             'total'  => $totalQuestions,
             'time'   => $timeUsedSecs,
             'exit'   => $exitAttempts,
-            'auto'   => $autoSubmitted,
+            'auto'   => $finalAutoSubmitted ? 1 : 0,
         ]);
     } catch (PDOException $e) {
         if ($e->getCode() !== '23000') throw $e;

@@ -51,3 +51,40 @@ function syncExamStatuses(PDO $pdo): void {
             AND end_time <= NOW()"
     );
 }
+
+/**
+ * Convert an API date value to the canonical database format. The builder sends
+ * local server-time values as Y-m-d H:i:s; accepting other strtotime-readable
+ * values keeps older web clients compatible while still rejecting nonsense.
+ */
+function normalizeExamDateTime($value, string $fieldName): ?string {
+    if ($value === null) return null;
+    if (!is_scalar($value)) {
+        throw new InvalidArgumentException($fieldName . ' must be a valid date and time.');
+    }
+    $raw = trim((string) $value);
+    if ($raw === '') return null;
+    $timestamp = strtotime($raw);
+    if ($timestamp === false) {
+        throw new InvalidArgumentException($fieldName . ' must be a valid date and time.');
+    }
+    return date('Y-m-d H:i:s', $timestamp);
+}
+
+/** Ensure the optional availability window is ordered correctly. */
+function validateExamAvailability(?string $startTime, ?string $endTime): void {
+    if ($startTime !== null && $endTime !== null && strtotime($endTime) <= strtotime($startTime)) {
+        throw new InvalidArgumentException('Availability end time must be after the start time.');
+    }
+}
+
+function validateExamDuration($value): int {
+    if (!is_scalar($value) || filter_var($value, FILTER_VALIDATE_INT) === false) {
+        throw new InvalidArgumentException('Exam duration must be a whole number of minutes.');
+    }
+    $minutes = (int) $value;
+    if ($minutes < 0 || $minutes > 1440) {
+        throw new InvalidArgumentException('Exam duration must be between 0 and 1440 minutes.');
+    }
+    return $minutes;
+}

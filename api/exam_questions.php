@@ -25,7 +25,7 @@ syncExamStatuses($pdo);
 $examStmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.description, e.duration_minutes, e.status,
             e.total_points, e.passing_score, e.hold_scores, e.randomize_questions, e.randomize_options,
-            e.max_exit_attempts,
+            e.max_exit_attempts, e.start_time, e.end_time,
             c.class_id, c.subject_name,
             u.first_name AS teacher_first_name, u.last_name AS teacher_last_name
      FROM exams e
@@ -53,6 +53,27 @@ $subCheck = $pdo->prepare(
 );
 $subCheck->execute(['eid' => $examId, 'uid' => $user['user_id']]);
 $existing = $subCheck->fetch();
+
+// A question session is valid only after the student has pressed Begin Exam.
+// Returning the persisted deadline here also lets the client recover safely
+// after an activity/process restart without granting a fresh duration.
+$attempt = null;
+$attemptTableAvailable = true;
+if (!$existing) {
+    try {
+        $attemptStmt = $pdo->prepare(
+            'SELECT started_at, deadline_at FROM exam_attempts
+             WHERE exam_id = :eid AND user_id = :uid'
+        );
+        $attemptStmt->execute(['eid' => $examId, 'uid' => $user['user_id']]);
+        $attempt = $attemptStmt->fetch();
+    } catch (PDOException $e) {
+        $attemptTableAvailable = false;
+    }
+    if ($attemptTableAvailable && !$attempt) {
+        sendError('Start the exam before loading its questions.', 'ATTEMPT_NOT_STARTED', 403);
+    }
+}
 
 // The student's previous answers (if already submitted) so the exam screen can
 // pre-populate / display what they already answered. Never expose correct answers.
@@ -83,7 +104,7 @@ if (!$existing) {
 // taking it, block further access unless a submission already exists (so
 // results remain viewable).
 $examStatus = strtoupper((string)$exam['status']);
-if ($examStatus !== 'LIVE' && !$existing) {
+if ($examStatus !== 'LIVE' && !$existing && !$attempt) {
     sendError('This exam is not available for taking right now.', 'EXAM_NOT_OPEN', 403);
 }
 
@@ -172,9 +193,21 @@ sendSuccess([
         'randomize_questions'  => (int) ($exam['randomize_questions'] ?? 0),
         'randomize_options'    => (int) ($exam['randomize_options'] ?? 0),
         'max_exit_attempts'    => $exam['max_exit_attempts'] ?? null,
+        'availability_start'   => $exam['start_time'],
+        'availability_end'     => $exam['end_time'],
+        'time_started'         => $attempt['started_at'] ?? null,
+        'deadline'             => $attempt['deadline_at'] ?? null,
+        'time_started_epoch'   => !empty($attempt['started_at']) ? strtotime($attempt['started_at']) : null,
+        'deadline_epoch'       => !empty($attempt['deadline_at']) ? strtotime($attempt['deadline_at']) : null,
         'teacher_name'         => trim($exam['teacher_first_name'] . ' ' . $exam['teacher_last_name']),
     ],
     'questions'  => $questions,
+    'availability_start' => $exam['start_time'],
+    'availability_end' => $exam['end_time'],
+    'time_started' => $attempt['started_at'] ?? null,
+    'deadline' => $attempt['deadline_at'] ?? null,
+    'time_started_epoch' => !empty($attempt['started_at']) ? strtotime($attempt['started_at']) : null,
+    'deadline_epoch' => !empty($attempt['deadline_at']) ? strtotime($attempt['deadline_at']) : null,
     'submitted'  => $existing ? true : false,
     'previous_answers' => $existing ? $previousAnswers : null,
     'revisions'  => $savedRevisions,

@@ -22,7 +22,8 @@ $eventType = strtoupper(trim((string) ($input['event_type'] ?? 'HEARTBEAT')));
 $allowedEvents = [
     'EXAM_STARTED', 'HEARTBEAT', 'ACTIVE', 'BACKGROUND',
     'NETWORK_LOST', 'NETWORK_RESTORED', 'QUESTION_VIEWED',
-    'ANSWER_CHANGED', 'SUBMITTED', 'CLOSED'
+    'ANSWER_CHANGED', 'SCREENSHOT', 'SCREEN_RECORDING', 'MULTI_WINDOW',
+    'SUBMITTED', 'CLOSED'
 ];
 
 if (!in_array($eventType, $allowedEvents, true)) {
@@ -90,4 +91,3 @@ try {
 } catch (PDOException $e) {
     sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);
 }
-

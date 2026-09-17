@@ -59,37 +59,26 @@ try {
         sendError('Only closed exams can be archived.', 'EXAM_NOT_CLOSED', 409);
     }
 
-    // Reopening a closed exam: clear the closed flag and reset the schedule so
-    // the automatic transition does not instantly close it again. The exam
-    // becomes LIVE immediately, with an end time based on its duration (or no
-    // auto-close for unlimited exams). Times are computed in SQL with NOW() so
-    // start_time and end_time always use the same server clock.
+    // Reopening a closed exam: clear the closed flag and reset the availability
+    // start. Duration_minutes is the student's personal countdown and must not
+    // be used as the availability end. Drop a stale old end_time; preserve a
+    // future explicit availability close.
     $isReopen = in_array($current, ['CLOSED'], true) && in_array($new_status, ['SCHEDULED', 'LIVE'], true);
     if ($isReopen) {
-        $duration = (int) $exam['duration_minutes'];
-        if ($duration > 0) {
-            $pdo->prepare("UPDATE exams SET status=?, start_time=NOW(), end_time=DATE_ADD(NOW(), INTERVAL ? MINUTE), is_closed=0, closed_at=NULL WHERE exam_id=?")
-                ->execute([$new_status, $duration, $exam_id]);
-        } else {
-            $pdo->prepare("UPDATE exams SET status=?, start_time=NOW(), end_time=NULL, is_closed=0, closed_at=NULL WHERE exam_id=?")
-                ->execute([$new_status, $exam_id]);
-        }
+        $endTime = (!empty($exam['end_time']) && strtotime($exam['end_time']) > time())
+            ? $exam['end_time'] : null;
+        $pdo->prepare("UPDATE exams SET status=?, start_time=NOW(), end_time=?, is_closed=0, closed_at=NULL WHERE exam_id=?")
+            ->execute([$new_status, $endTime, $exam_id]);
     } elseif ($new_status === 'CLOSED') {
         $stmt2 = $pdo->prepare("UPDATE exams SET status=?, is_closed=1, closed_at=NOW() WHERE exam_id=?");
         $stmt2->execute([$new_status, $exam_id]);
     } else {
         // Moving an exam to SCHEDULED without an explicit start time schedules
-        // it for the next server second, so the automatic transition can make
-        // it LIVE as soon as the start time arrives.
+        // it for the next server second. Do not derive an availability close
+        // from duration_minutes; that field belongs to each student's attempt.
         if ($new_status === 'SCHEDULED' && ($exam['start_time'] === null || $exam['start_time'] === '')) {
-            $duration = (int) $exam['duration_minutes'];
-            if ($duration > 0) {
-                $pdo->prepare("UPDATE exams SET start_time=NOW(), end_time=DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE exam_id=?")
-                    ->execute([$duration, $exam_id]);
-            } else {
-                $pdo->prepare("UPDATE exams SET start_time=NOW(), end_time=NULL WHERE exam_id=?")
-                    ->execute([$exam_id]);
-            }
+            $pdo->prepare("UPDATE exams SET start_time=NOW(), end_time=CASE WHEN end_time IS NOT NULL AND end_time <= NOW() THEN NULL ELSE end_time END WHERE exam_id=?")
+                ->execute([$exam_id]);
         }
         $stmt2 = $pdo->prepare("UPDATE exams SET status=? WHERE exam_id=?");
         $stmt2->execute([$new_status, $exam_id]);

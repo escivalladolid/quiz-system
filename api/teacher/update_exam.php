@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_grading.php';
 require_once __DIR__ . '/../../helpers/exam_builder.php';
+require_once __DIR__ . '/../../helpers/exam_status.php';
 
 header('Content-Type: application/json');
 
@@ -24,9 +25,10 @@ if (!$input || !isset($input['exam_id'])) {
 $exam_id = $input['exam_id'];
 
 try {
-    $stmt = $pdo->prepare("SELECT e.exam_id FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.exam_id=? AND c.teacher_id=?");
+    $stmt = $pdo->prepare("SELECT e.exam_id, e.start_time, e.end_time FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.exam_id=? AND c.teacher_id=?");
     $stmt->execute([$exam_id, $teacher_id]);
-    if (!$stmt->fetch()) {
+    $examRow = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$examRow) {
         sendError('Exam not found or not authorized.', 'NOT_FOUND', 404);
     }
 
@@ -52,6 +54,16 @@ try {
 
     foreach ($safeFields as $field) {
         if (isset($input[$field])) {
+            if ($field === 'duration_minutes') {
+                $input[$field] = validateExamDuration($input[$field]);
+            }
+            if ($field === 'passing_score') {
+                $passing = filter_var($input[$field], FILTER_VALIDATE_INT);
+                if ($passing === false || $passing < 1 || $passing > 100) {
+                    sendError('Passing score must be between 1 and 100.', 'BAD_REQUEST', 422);
+                }
+                $input[$field] = $passing;
+            }
             $updates[] = "$field=?";
             $params[] = $field === 'hold_scores' ? (!empty($input[$field]) ? 1 : 0) : $input[$field];
         }
@@ -84,11 +96,10 @@ try {
             $params[] = $input['randomize_options'] ? 1 : 0;
         }
 
-        // Scheduling controls: publishing sets SCHEDULED with a start time;
-        // the automatic transition flips it to LIVE once the start time hits.
-        // Times are always recomputed on publish so a stale end_time can never
-        // instantly close a freshly scheduled exam. Unlimited exams (0 min)
-        // get no end_time and stay open until manually closed.
+        // Scheduling controls: publishing sets SCHEDULED with an availability
+        // start time; the automatic transition flips it to LIVE once that
+        // time hits. The availability end is independent of duration_minutes.
+        // A blank end time means "until manually closed".
         if (isset($input['status'])) {
             $newStatus = strtoupper((string)$input['status']);
             if (!in_array($newStatus, ['DRAFT', 'SCHEDULED'], true)) {
@@ -99,29 +110,30 @@ try {
 
             if ($newStatus === 'SCHEDULED') {
                 $duration = (int) ($input['duration_minutes'] ?? 60);
-                $startTime = (!empty($input['start_time']))
-                    ? $input['start_time']
-                    : $pdo->query('SELECT NOW()')->fetchColumn();
-                if (!empty($input['end_time'])) {
-                    $endTime = $input['end_time'];
-                } else {
-                    $endTime = ($duration > 0)
-                        ? date('Y-m-d H:i:s', strtotime($startTime . ' + ' . $duration . ' minutes'))
-                        : null;
-                }
+                $startTime = normalizeExamDateTime($input['start_time'] ?? null, 'Availability start time');
+                $endTime = normalizeExamDateTime($input['end_time'] ?? null, 'Availability end time');
+                $startTime = $startTime ?? $pdo->query('SELECT NOW()')->fetchColumn();
+                validateExamAvailability($startTime, $endTime);
                 $updates[] = 'start_time=?';
                 $params[] = $startTime;
                 $updates[] = 'end_time=?';
                 $params[] = $endTime;
             }
         } else {
-            if (isset($input['start_time']) && !empty($input['start_time'])) {
+            $normalizedStartForUpdate = array_key_exists('start_time', $input)
+                ? normalizeExamDateTime($input['start_time'], 'Availability start time')
+                : normalizeExamDateTime($examRow['start_time'] ?? null, 'Availability start time');
+            $normalizedEndForUpdate = array_key_exists('end_time', $input)
+                ? normalizeExamDateTime($input['end_time'], 'Availability end time')
+                : normalizeExamDateTime($examRow['end_time'] ?? null, 'Availability end time');
+            validateExamAvailability($normalizedStartForUpdate, $normalizedEndForUpdate);
+            if (array_key_exists('start_time', $input)) {
                 $updates[] = 'start_time=?';
-                $params[] = $input['start_time'];
+                $params[] = $normalizedStartForUpdate;
             }
-            if (isset($input['end_time']) && !empty($input['end_time'])) {
+            if (array_key_exists('end_time', $input)) {
                 $updates[] = 'end_time=?';
-                $params[] = $input['end_time'];
+                $params[] = $normalizedEndForUpdate;
             }
         }
 

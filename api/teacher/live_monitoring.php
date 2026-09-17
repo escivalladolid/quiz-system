@@ -171,6 +171,18 @@ try {
                     $message .= ' left the exam app';
                     $feedType = 'warning';
                     break;
+                case 'MULTI_WINDOW':
+                    $message .= ' entered split-screen or multi-window mode';
+                    $feedType = 'warning';
+                    break;
+                case 'SCREENSHOT':
+                    $message .= ' attempted to capture a screenshot';
+                    $feedType = 'warning';
+                    break;
+                case 'SCREEN_RECORDING':
+                    $message .= ' started screen recording';
+                    $feedType = 'warning';
+                    break;
                 case 'ACTIVE':
                     $message .= ' returned to the exam';
                     break;
