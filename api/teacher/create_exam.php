@@ -29,6 +29,10 @@ $input['passing_score'] = filter_var($input['passing_score'], FILTER_VALIDATE_IN
 if ($input['passing_score'] === false || $input['passing_score'] < 1 || $input['passing_score'] > 100) {
     sendError('Passing score must be between 1 and 100.', 'BAD_REQUEST', 422);
 }
+$input['max_exit_attempts'] = filter_var($input['max_exit_attempts'] ?? 3, FILTER_VALIDATE_INT);
+if ($input['max_exit_attempts'] === false || $input['max_exit_attempts'] < 1 || $input['max_exit_attempts'] > 10) {
+    sendError('Maximum exit attempts must be between 1 and 10.', 'BAD_REQUEST', 422);
+}
 
 try {
     $stmt = $pdo->prepare("SELECT class_id FROM classes WHERE class_id=? AND teacher_id=?");
@@ -82,7 +86,7 @@ try {
         $input['total_points'] ?? 100,
         isset($input['randomize_questions']) ? ($input['randomize_questions'] ? 1 : 0) : 0,
         isset($input['randomize_options']) ? ($input['randomize_options'] ? 1 : 0) : 0,
-        $input['max_exit_attempts'] ?? 3
+        $input['max_exit_attempts']
     ]);
 
     $exam_id = $pdo->lastInsertId();

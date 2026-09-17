@@ -59,9 +59,9 @@ $subStmt = $pdo->prepare(
 
         // Tab-switch log timestamps for this student (most recent first).
         $logStmt = $pdo->prepare(
-            'SELECT created_at FROM exam_proctoring_log
-             WHERE exam_id = :eid AND user_id = :uid
-             ORDER BY created_at DESC'
+            "SELECT created_at FROM exam_proctoring_log
+             WHERE exam_id = :eid AND user_id = :uid AND event_type = 'TAB_SWITCH'
+             ORDER BY created_at DESC"
         );
         $logStmt->execute(['eid' => $examId, 'uid' => $studentId]);
         $tabSwitchLog = array_map(fn($r) => $r['created_at'], $logStmt->fetchAll());
@@ -106,7 +106,8 @@ $listStmt = $pdo->prepare(
                 s.time_used_secs, s.submitted_at, s.results_released, s.released_at,
                 u.first_name, u.last_name,
                 (SELECT COUNT(*) FROM exam_proctoring_log p
-                  WHERE p.exam_id = s.exam_id AND p.user_id = s.user_id) AS tab_switch_count
+                  WHERE p.exam_id = s.exam_id AND p.user_id = s.user_id
+                    AND p.event_type = \'TAB_SWITCH\') AS tab_switch_count
          FROM exam_submissions s
          JOIN users u ON u.user_id = s.user_id
 WHERE s.exam_id = :eid

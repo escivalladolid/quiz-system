@@ -35,6 +35,7 @@ try {
     if (!$exam) sendError('Exam not found.', 'NOT_FOUND', 404);
 
     $monitoringAvailable = examMonitoringTablesAvailable($pdo);
+    $activityLogAvailable = examActivityLogAvailable($pdo);
     if ($monitoringAvailable) {
         $studentsStmt = $pdo->prepare(
             'SELECT u.user_id, u.first_name, u.last_name,
@@ -53,7 +54,7 @@ try {
              LEFT JOIN (
                  SELECT user_id, COUNT(*) AS cnt, MAX(created_at) AS last_at
                  FROM exam_proctoring_log
-                 WHERE exam_id = :eid2
+                 WHERE exam_id = :eid2 AND event_type = \'TAB_SWITCH\'
                  GROUP BY user_id
              ) pc ON pc.user_id = u.user_id
              LEFT JOIN exam_live_presence lp
@@ -82,7 +83,7 @@ try {
              LEFT JOIN (
                  SELECT user_id, COUNT(*) AS cnt, MAX(created_at) AS last_at
                  FROM exam_proctoring_log
-                 WHERE exam_id = :eid2
+                 WHERE exam_id = :eid2 AND event_type = \'TAB_SWITCH\'
                  GROUP BY user_id
              ) pc ON pc.user_id = u.user_id
              WHERE en.class_id = :cid
@@ -144,7 +145,7 @@ try {
     unset($student);
 
     $events = [];
-    if ($monitoringAvailable) {
+    if ($activityLogAvailable) {
         $eventStmt = $pdo->prepare(
             'SELECT u.first_name, u.last_name, a.event_type,
                     a.question_index, a.created_at
@@ -220,21 +221,29 @@ try {
         }
     } else {
         $logStmt = $pdo->prepare(
-            'SELECT u.first_name, u.last_name, p.event_type, p.created_at
+            "SELECT u.first_name, u.last_name, p.event_type, p.created_at
              FROM exam_proctoring_log p
              JOIN users u ON u.user_id = p.user_id
              WHERE p.exam_id = :eid
+               AND p.event_type IN ('TAB_SWITCH', 'SCREENSHOT', 'SCREEN_RECORDING', 'MULTI_WINDOW', 'SUBMITTED', 'CLOSED')
              ORDER BY p.created_at DESC
-             LIMIT 50'
+             LIMIT 50"
         );
         $logStmt->execute(['eid' => $examId]);
         foreach ($logStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $name = trim($row['first_name'] . ' ' . $row['last_name']);
+            $type = strtoupper((string) $row['event_type']);
+            $message = $name . ' left the exam screen';
+            if ($type === 'SCREENSHOT') $message = $name . ' attempted to capture a screenshot';
+            elseif ($type === 'SCREEN_RECORDING') $message = $name . ' started screen recording';
+            elseif ($type === 'MULTI_WINDOW') $message = $name . ' entered split-screen or multi-window mode';
+            elseif ($type === 'SUBMITTED') $message = $name . ' submitted the exam';
+            elseif ($type === 'CLOSED') $message = $name . ' left the exam';
             $events[] = [
                 'student_name' => $name,
                 'type' => 'warning',
-                'event_type' => $row['event_type'],
-                'message' => $name . ' left the exam screen',
+                'event_type' => $type,
+                'message' => $message,
                 'occurred_at' => $row['created_at'],
             ];
         }
@@ -249,6 +258,7 @@ try {
         'students' => $students,
         'events' => $events,
         'monitoring_available' => $monitoringAvailable,
+        'activity_log_available' => $activityLogAvailable,
         'summary' => [
             'active' => $activeCount,
             'away' => $awayCount,

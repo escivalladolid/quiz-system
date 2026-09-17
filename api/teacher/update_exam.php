@@ -64,6 +64,13 @@ try {
                 }
                 $input[$field] = $passing;
             }
+            if ($field === 'max_exit_attempts') {
+                $maxExitAttempts = filter_var($input[$field], FILTER_VALIDATE_INT);
+                if ($maxExitAttempts === false || $maxExitAttempts < 1 || $maxExitAttempts > 10) {
+                    sendError('Maximum exit attempts must be between 1 and 10.', 'BAD_REQUEST', 422);
+                }
+                $input[$field] = $maxExitAttempts;
+            }
             $updates[] = "$field=?";
             $params[] = $field === 'hold_scores' ? (!empty($input[$field]) ? 1 : 0) : $input[$field];
         }

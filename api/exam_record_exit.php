@@ -63,14 +63,22 @@ try {
     recordExamActivity($pdo, $examId, $studentId, 'TAB_SWITCH');
 
     $countStmt = $pdo->prepare(
-        'SELECT COUNT(*) AS cnt FROM exam_proctoring_log WHERE exam_id = :eid AND user_id = :uid'
+        "SELECT COUNT(*) AS cnt FROM exam_proctoring_log
+         WHERE exam_id = :eid AND user_id = :uid AND event_type = 'TAB_SWITCH'"
     );
     $countStmt->execute(['eid' => $examId, 'uid' => $studentId]);
     $count = (int) $countStmt->fetch()['cnt'];
 
+    $maxExitAttempts = (int) ($exam['max_exit_attempts'] ?? 0);
+    if ($maxExitAttempts < 1) $maxExitAttempts = 3;
+    $thresholdReached = $count >= $maxExitAttempts;
+
     sendSuccess([
         'tab_switch_count' => $count,
-        'max_exit_attempts' => $exam['max_exit_attempts'] !== null ? (int) $exam['max_exit_attempts'] : null,
+        'max_exit_attempts' => $maxExitAttempts,
+        'threshold_reached' => $thresholdReached,
+        'auto_submit_required' => $thresholdReached,
+        'remaining_attempts' => max(0, $maxExitAttempts - $count),
     ]);
 } catch (PDOException $e) {
     sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);

@@ -81,12 +81,25 @@ try {
         'network_state' => $input['network_state'] ?? null,
     ]);
 
+    // If the newer activity history migration is not present, retain the
+    // security events that teachers need in the legacy feed. This is only a
+    // compatibility path; once exam_activity_log exists, it is the source of
+    // truth and no duplicate legacy row is written.
+    $legacyRecorded = false;
+    if (!examActivityLogAvailable($pdo)
+            && in_array($eventType, ['SCREENSHOT', 'SCREEN_RECORDING', 'MULTI_WINDOW', 'SUBMITTED', 'CLOSED'], true)) {
+        $legacyRecorded = recordLegacyExamActivity($pdo, $examId, $studentId, $eventType);
+    }
+
+    $monitoringAvailable = examMonitoringTablesAvailable($pdo);
+
     // Monitoring is intentionally additive. If the migration has not been
     // applied yet, the exam remains usable and the teacher screen reports the
     // capability as unavailable instead of breaking the attempt.
     sendSuccess([
-        'recorded' => $recorded,
-        'monitoring_available' => $recorded,
+        'recorded' => $recorded || $legacyRecorded,
+        'monitoring_available' => $monitoringAvailable,
+        'activity_log_available' => examActivityLogAvailable($pdo),
     ]);
 } catch (PDOException $e) {
     sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);
