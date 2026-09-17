@@ -26,7 +26,8 @@ try {
     syncExamStatuses($pdo);
 
     $examStmt = $pdo->prepare(
-        'SELECT e.exam_id, e.status, e.max_exit_attempts, c.class_id
+        'SELECT e.exam_id, e.status, e.max_exit_attempts, e.hold_scores,
+                e.is_closed, e.passing_score, c.class_id
          FROM exams e
          JOIN classes c ON c.class_id = e.class_id
          WHERE e.exam_id = :eid'
@@ -154,16 +155,50 @@ try {
             }
 
             $receiptStmt = $pdo->prepare(
-                'SELECT submission_id, auto_submitted, exit_attempts
+                'SELECT submission_id, score, correct_count, total_questions,
+                        time_used_secs, submitted_at, auto_submitted, exit_attempts
                  FROM exam_submissions WHERE exam_id = :eid AND user_id = :uid'
             );
             $receiptStmt->execute(['eid' => $examId, 'uid' => $studentId]);
             $receipt = $receiptStmt->fetch(PDO::FETCH_ASSOC);
+            $serverReceipt = null;
+            if ($receipt) {
+                $earned = (int) $receipt['score'];
+                $totalPoints = (int) ($grade['total_points'] ?? 0);
+                $percentage = $totalPoints > 0
+                    ? round(($earned / $totalPoints) * 100, 2) : 0.0;
+                $passingScore = $exam['passing_score'] !== null
+                    ? (float) $exam['passing_score'] : null;
+                $scoresVisible = ((int) ($exam['is_closed'] ?? 0) === 1)
+                    || strtoupper((string) ($exam['status'] ?? '')) === 'CLOSED'
+                    || (int) ($exam['hold_scores'] ?? 0) === 0;
+                $serverReceipt = [
+                    'submission_id' => (int) $receipt['submission_id'],
+                    'score' => $scoresVisible ? $earned : 0,
+                    'earned_points' => $scoresVisible ? $earned : null,
+                    'total_points' => $totalPoints,
+                    'correct_count' => $scoresVisible ? (int) $receipt['correct_count'] : 0,
+                    'total_questions' => (int) $receipt['total_questions'],
+                    'question_count' => (int) $receipt['total_questions'],
+                    'percentage' => $scoresVisible ? $percentage : null,
+                    'passing_score' => $passingScore,
+                    'passed' => $scoresVisible && $passingScore !== null
+                        ? $percentage >= $passingScore : false,
+                    'scores_visible' => $scoresVisible,
+                    'show_results' => $scoresVisible ? 1 : 0,
+                    'time_used_secs' => $receipt['time_used_secs'] !== null
+                        ? (int) $receipt['time_used_secs'] : null,
+                    'exit_attempts' => (int) $receipt['exit_attempts'],
+                    'auto_submitted' => (bool) $receipt['auto_submitted'],
+                    'submitted_at' => $receipt['submitted_at'],
+                ];
+            }
             $autoSubmission = [
                 'submission_id' => $receipt ? (int) $receipt['submission_id'] : null,
                 'inserted' => $inserted,
                 'auto_submitted' => $receipt ? (bool) $receipt['auto_submitted'] : true,
                 'exit_attempts' => $receipt ? (int) $receipt['exit_attempts'] : $tabSwitchCount,
+                'receipt' => $serverReceipt,
             ];
         }
 
@@ -203,6 +238,9 @@ try {
         'auto_submit_required' => $thresholdReached,
         'server_submitted' => $autoSubmission !== null,
         'submission_id' => $autoSubmission['submission_id'] ?? null,
+        // When the server finalized at the threshold, return the receipt in
+        // the same response so the app does not need a second submit request.
+        'submission' => $autoSubmission['receipt'] ?? null,
         'auto_submitted' => $autoSubmission['auto_submitted'] ?? false,
         'remaining_attempts' => max(0, (int) $maxExitAttempts - $tabSwitchCount),
     ]);
