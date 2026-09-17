@@ -39,9 +39,10 @@ try {
         sendError('Exam not found.', 'NOT_FOUND', 404);
     }
 
-    if (strtoupper((string) $exam['status']) !== 'LIVE') {
-        sendError('This exam is closed.', 'EXAM_CLOSED', 403);
-    }
+    // A student may still have an active attempt when the availability window
+    // closes. Keep processing that attempt so the server can finalize its
+    // saved answers instead of returning EXAM_CLOSED with no submission.
+    $availabilityClosed = strtoupper((string) $exam['status']) !== 'LIVE';
 
     $maxExitAttempts = filter_var($exam['max_exit_attempts'] ?? null, FILTER_VALIDATE_INT);
     if ($maxExitAttempts === false || $maxExitAttempts < 1 || $maxExitAttempts > 10) {
@@ -64,8 +65,12 @@ try {
     $attempt = resolveExamAttempt($pdo, $examId, $studentId, $requestedAttemptId);
     if (!$attempt) {
         sendError(
-            $requestedAttemptId !== null ? 'The supplied exam attempt is not valid.' : 'Start the exam before recording an exit.',
-            $requestedAttemptId !== null ? 'INVALID_ATTEMPT' : 'ATTEMPT_NOT_STARTED',
+            $requestedAttemptId !== null
+                ? 'The supplied exam attempt is not valid.'
+                : ($availabilityClosed ? 'This exam is closed.' : 'Start the exam before recording an exit.'),
+            $requestedAttemptId !== null
+                ? 'INVALID_ATTEMPT'
+                : ($availabilityClosed ? 'EXAM_CLOSED' : 'ATTEMPT_NOT_STARTED'),
             403
         );
     }
@@ -112,7 +117,11 @@ try {
         // Only this attempt contributes to the configured threshold. Legacy
         // rows with a NULL attempt_id are intentionally ignored.
         $tabSwitchCount = countAttemptTabSwitches($pdo, $examId, $studentId, $attemptId);
-        $thresholdReached = $tabSwitchCount >= (int) $maxExitAttempts;
+        // Closing the availability window is also an automatic-finalization
+        // condition. The attempt is graded even when the exit count is below
+        // the teacher's threshold.
+        $thresholdReached = $availabilityClosed
+            || $tabSwitchCount >= (int) $maxExitAttempts;
 
         if ($thresholdReached) {
             // The server finalizes the attempt while holding the submission
@@ -228,13 +237,15 @@ try {
         }
     }
 
-    $thresholdReached = $tabSwitchCount >= (int) $maxExitAttempts;
+    $thresholdReached = $availabilityClosed
+        || $tabSwitchCount >= (int) $maxExitAttempts;
     sendSuccess([
         'attempt_id' => $attemptId,
         'tab_switch_count' => $tabSwitchCount,
         'current_exit_attempts' => $tabSwitchCount,
         'max_exit_attempts' => (int) $maxExitAttempts,
         'threshold_reached' => $thresholdReached,
+        'availability_closed' => $availabilityClosed,
         'auto_submit_required' => $thresholdReached,
         'server_submitted' => $autoSubmission !== null,
         'submission_id' => $autoSubmission['submission_id'] ?? null,
