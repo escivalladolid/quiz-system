@@ -15,3 +15,4 @@ Thumbs.db
 # Keep the import SQL out of the Docker image (it's a Phase 3 artifact)
 database/quiz_system.sql
 database/*.sql
+!database/migration_attempt_scoped_proctoring.sql

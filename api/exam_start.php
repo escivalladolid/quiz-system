@@ -169,11 +169,12 @@ $deadlineAt = $attempt['deadline_at'] ?? null;
 if ($starting && $attempt) {
     $activityLogFailed = false;
     recordExamActivity($pdo, $examId, $studentId, 'EXAM_STARTED', [
+        'attempt_id' => $attempt ? (int) $attempt['attempt_id'] : null,
         'total_questions' => $questionCount,
         'network_state' => 'ONLINE',
     ], $activityLogFailed);
     if ($activityLogFailed || !examActivityLogAvailable($pdo)) {
-        recordLegacyExamActivity($pdo, $examId, $studentId, 'EXAM_STARTED');
+        recordLegacyExamActivity($pdo, $examId, $studentId, 'EXAM_STARTED', $attempt ? (int) $attempt['attempt_id'] : null);
     }
 }
 
@@ -199,6 +200,7 @@ sendSuccess([
     'started'               => $starting,
     'time_started'          => $startedAt,
     'deadline'              => $deadlineAt,
+    'attempt_id'            => $attempt ? (int) $attempt['attempt_id'] : null,
     'time_started_epoch'    => $startedAt ? strtotime($startedAt) : null,
     'deadline_epoch'        => $deadlineAt ? strtotime($deadlineAt) : null,
 ]);

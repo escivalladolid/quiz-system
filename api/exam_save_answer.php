@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/../helpers/exam_status.php';
+require_once __DIR__ . '/../helpers/exam_attempts.php';
 
 header('Content-Type: application/json');
 
@@ -23,6 +24,7 @@ $answer    = $input['answer'];
 // stale offline replay can never overwrite a newer answer.
 $revision  = isset($input['revision']) ? max(0, (int) $input['revision']) : 0;
 $studentId = $user['user_id'];
+$requestedAttemptId = examAttemptIdFromInput($input);
 
 // Sync time-based transitions so the status below is always current.
 syncExamStatuses($pdo);
@@ -100,11 +102,7 @@ try {
         sendError('Exam already submitted. Cannot save answers.', 'ALREADY_SUBMITTED', 409);
     }
 
-    $attemptStmt = $pdo->prepare(
-        'SELECT started_at, deadline_at FROM exam_attempts WHERE exam_id = :eid AND user_id = :uid'
-    );
-    $attemptStmt->execute(['eid' => $examId, 'uid' => $studentId]);
-    $attempt = $attemptStmt->fetch();
+    $attempt = resolveExamAttempt($pdo, $examId, (int) $studentId, $requestedAttemptId);
 
     if (!$attempt) {
         $pdo->rollBack();

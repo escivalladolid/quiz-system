@@ -44,6 +44,9 @@ try {
     $activityLogAvailable = examActivityLogAvailable($pdo);
     $presenceAvailable = examPresenceTableAvailable($pdo);
     $violationTable = $activityLogAvailable ? 'exam_activity_log' : 'exam_proctoring_log';
+    $violationAttemptColumnAvailable = $activityLogAvailable
+        ? examActivityAttemptColumnAvailable($pdo)
+        : examProctoringAttemptColumnAvailable($pdo);
     $violationCountsSql = "
                      COALESCE(vc.tab_switch_count, 0) AS tab_switch_count,
                      COALESCE(vc.screenshot_count, 0) AS screenshot_count,
@@ -53,7 +56,7 @@ try {
                      COALESCE(vc.total_violation_count, 0) AS total_violation_count,
                      vc.last_security_event,
                      vc.last_security_event_at,";
-    $violationJoinSql = "
+    $violationJoinSql = $violationAttemptColumnAvailable ? "
               LEFT JOIN (
                   SELECT user_id,
                          SUM(event_type = 'TAB_SWITCH') AS tab_switch_count,
@@ -69,8 +72,28 @@ try {
                              ORDER BY created_at DESC SEPARATOR ','), ',', 1) AS last_security_event,
                          MAX(CASE WHEN event_type IN ('TAB_SWITCH', 'SCREENSHOT', 'MULTI_WINDOW',
                              'SCREEN_RECORDING', 'BACKGROUND', 'CLOSED') THEN created_at END) AS last_security_event_at
-                  FROM {$violationTable}
-                  WHERE exam_id = :vid
+                  FROM {$violationTable} v
+                  WHERE v.exam_id = :vid
+                    AND v.attempt_id = (
+                        SELECT MAX(ea2.attempt_id)
+                        FROM exam_attempts ea2
+                        WHERE ea2.exam_id = v.exam_id AND ea2.user_id = v.user_id
+                    )
+                  GROUP BY user_id
+              ) vc ON vc.user_id = u.user_id"
+    : "
+              LEFT JOIN (
+                  SELECT user_id,
+                         0 AS tab_switch_count,
+                         0 AS screenshot_count,
+                         0 AS multi_window_count,
+                         0 AS screen_recording_count,
+                         0 AS background_count,
+                         0 AS total_violation_count,
+                         NULL AS last_security_event,
+                         NULL AS last_security_event_at
+                  FROM enrollments
+                  WHERE class_id = :vid_empty
                   GROUP BY user_id
               ) vc ON vc.user_id = u.user_id";
     if ($monitoringAvailable) {
@@ -93,12 +116,14 @@ try {
              WHERE en.class_id = :cid
              ORDER BY u.last_name, u.first_name'
         );
-        $studentsStmt->execute([
+        $studentsParams = [
             'eid' => $examId,
             'vid' => $examId,
             'eid3' => $examId,
             'cid' => $exam['class_id'],
-        ]);
+        ];
+        if (!$violationAttemptColumnAvailable) $studentsParams['vid_empty'] = -1;
+        $studentsStmt->execute($studentsParams);
     } else {
         // Compatibility fallback while the optional live-monitoring migration
         // is being applied. This preserves the original tab-switch view.
@@ -114,11 +139,13 @@ try {
              WHERE en.class_id = :cid
              ORDER BY u.last_name, u.first_name'
         );
-        $studentsStmt->execute([
+        $studentsParams = [
             'eid' => $examId,
             'vid' => $examId,
             'cid' => $exam['class_id'],
-        ]);
+        ];
+        if (!$violationAttemptColumnAvailable) $studentsParams['vid_empty'] = -1;
+        $studentsStmt->execute($studentsParams);
     }
 
     $students = $studentsStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -177,12 +204,16 @@ try {
 
     $events = [];
     if ($activityLogAvailable) {
+        $activityEventScope = $violationAttemptColumnAvailable
+            ? " AND a.attempt_id = (SELECT MAX(ea3.attempt_id) FROM exam_attempts ea3
+                                      WHERE ea3.exam_id = a.exam_id AND ea3.user_id = a.user_id)"
+            : ' AND 1 = 0';
         $eventStmt = $pdo->prepare(
             'SELECT u.first_name, u.last_name, a.event_type,
                     a.question_index, a.created_at
              FROM exam_activity_log a
              JOIN users u ON u.user_id = a.user_id
-             WHERE a.exam_id = :eid AND a.event_type <> \'HEARTBEAT\'
+             WHERE a.exam_id = :eid AND a.event_type <> \'HEARTBEAT\'' . $activityEventScope . '
              ORDER BY a.created_at DESC
              LIMIT 100'
         );
@@ -251,11 +282,15 @@ try {
             ];
         }
     } else {
+        $legacyEventScope = $violationAttemptColumnAvailable
+            ? " AND p.attempt_id = (SELECT MAX(ea4.attempt_id) FROM exam_attempts ea4
+                                      WHERE ea4.exam_id = p.exam_id AND ea4.user_id = p.user_id)"
+            : ' AND 1 = 0';
         $logStmt = $pdo->prepare(
             "SELECT u.first_name, u.last_name, p.event_type, p.created_at
              FROM exam_proctoring_log p
              JOIN users u ON u.user_id = p.user_id
-             WHERE p.exam_id = :eid
+             WHERE p.exam_id = :eid" . $legacyEventScope . "
              ORDER BY p.created_at DESC
              LIMIT 50"
         );

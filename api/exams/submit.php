@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_status.php';
 require_once __DIR__ . '/../../helpers/exam_grading.php';
+require_once __DIR__ . '/../../helpers/exam_attempts.php';
 require_once __DIR__ . '/../../helpers/exam_monitoring.php';
 
 header('Content-Type: application/json');
@@ -20,7 +21,7 @@ requireFields($input, ['exam_id']);
 $examId       = (int) $input['exam_id'];
 $answers      = (isset($input['answers']) && is_array($input['answers'])) ? $input['answers'] : [];
 $timeUsedSecs = isset($input['time_used_secs']) ? (int) $input['time_used_secs'] : null;
-$exitAttempts = isset($input['exit_attempts']) ? (int) $input['exit_attempts'] : 0;
+$requestedAttemptId = examAttemptIdFromInput($input);
 $autoSubmitted = !empty($input['auto_submitted']) ? 1 : 0;
 
 // Sync time-based transitions so the status below is always current.
@@ -62,7 +63,8 @@ $buildReceipt = function (PDO $pdo, array $sub, ?float $passingScore, bool $scor
 
 // Get exam
 $examStmt = $pdo->prepare(
-    'SELECT e.exam_id, e.status, e.is_closed, e.hold_scores, e.class_id, e.passing_score
+    'SELECT e.exam_id, e.status, e.is_closed, e.hold_scores, e.class_id,
+            e.passing_score, e.max_exit_attempts
      FROM exams e WHERE e.exam_id = :eid'
 );
 $examStmt->execute(['eid' => $examId]);
@@ -72,6 +74,11 @@ if (!$exam) {
     sendError('Exam not found.', 'NOT_FOUND', 404);
 }
 $passingScore = $exam['passing_score'] !== null ? (float) $exam['passing_score'] : null;
+$maxExitAttempts = filter_var($exam['max_exit_attempts'] ?? null, FILTER_VALIDATE_INT);
+if ($maxExitAttempts === false || $maxExitAttempts < 1 || $maxExitAttempts > 10) {
+    error_log('Invalid max_exit_attempts for exam ' . $examId . '; refusing to use a fallback.');
+    sendError('This exam has no valid maximum exit-attempt limit configured.', 'SERVER_MISCONFIGURED', 500);
+}
 $scoresVisible = ((int) ($exam['is_closed'] ?? 0) === 1)
     || strtoupper((string) ($exam['status'] ?? '')) === 'CLOSED'
     || (int) ($exam['hold_scores'] ?? 0) === 0;
@@ -114,14 +121,18 @@ foreach (['exam_attempts', 'exam_answer_revisions'] as $tableName) {
     }
 }
 
+if (!examProctoringAttemptColumnAvailable($pdo)) {
+    sendError(
+        'The attempt-scoped proctoring migration is missing on the server. Ask your administrator to apply migration_attempt_scoped_proctoring.sql.',
+        'SERVER_MISCONFIGURED',
+        500
+    );
+}
+
 // The student must start the exam (exam_start.php action=start). A submission
 // that arrives after the individual deadline or availability close is the
 // expected auto-finalization path for that already-started attempt.
-$attemptStmt = $pdo->prepare(
-    'SELECT started_at, deadline_at FROM exam_attempts WHERE exam_id = :eid AND user_id = :uid'
-);
-$attemptStmt->execute(['eid' => $examId, 'uid' => $user['user_id']]);
-$attempt = $attemptStmt->fetch();
+$attempt = resolveExamAttempt($pdo, $examId, (int) $user['user_id'], $requestedAttemptId);
 
 if (!$attempt) {
     sendError(
@@ -130,6 +141,11 @@ if (!$attempt) {
         403
     );
 }
+$attemptId = (int) $attempt['attempt_id'];
+
+// The server, rather than the client payload, owns the persisted violation
+// count for this attempt. Legacy rows with NULL attempt_id are excluded.
+$exitAttempts = countAttemptTabSwitches($pdo, $examId, (int) $user['user_id'], $attemptId);
 
 $deadlineAt = $attempt['deadline_at'];
 $now = date('Y-m-d H:i:s');
@@ -143,7 +159,8 @@ if ($deadlineExpired && !$autoSubmitted && $examStatus === 'LIVE') {
 // window closes is the expected auto-submit path. Finalize the already-started
 // attempt instead of rejecting it; the server marks the receipt as automatic
 // regardless of whether the client managed to set the flag before losing focus.
-$finalAutoSubmitted = $autoSubmitted || $examStatus !== 'LIVE' || (bool) $deadlineExpired;
+$finalAutoSubmitted = $autoSubmitted || $examStatus !== 'LIVE' || (bool) $deadlineExpired
+    || $exitAttempts >= (int) $maxExitAttempts;
 
 // Fetch all questions for this exam
 $qStmt = $pdo->prepare(
@@ -234,7 +251,7 @@ try {
         'network_state' => 'ONLINE',
     ], $activityLogFailed);
     if ($activityLogFailed || !examActivityLogAvailable($pdo)) {
-        recordLegacyExamActivity($pdo, $examId, (int) $user['user_id'], 'SUBMITTED');
+        recordLegacyExamActivity($pdo, $examId, (int) $user['user_id'], 'SUBMITTED', $attemptId);
     }
     sendSuccess($receipt);
 } catch (PDOException $e) {

@@ -4,6 +4,7 @@ require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/../helpers/exam_status.php';
 require_once __DIR__ . '/../helpers/exam_grading.php';
+require_once __DIR__ . '/../helpers/exam_attempts.php';
 
 header('Content-Type: application/json');
 
@@ -58,11 +59,13 @@ $existing = $subCheck->fetch();
 // Returning the persisted deadline here also lets the client recover safely
 // after an activity/process restart without granting a fresh duration.
 $attempt = null;
+$attemptId = null;
+$currentExitAttempts = 0;
 $attemptTableAvailable = true;
 if (!$existing) {
     try {
         $attemptStmt = $pdo->prepare(
-            'SELECT started_at, deadline_at FROM exam_attempts
+            'SELECT attempt_id, started_at, deadline_at FROM exam_attempts
              WHERE exam_id = :eid AND user_id = :uid'
         );
         $attemptStmt->execute(['eid' => $examId, 'uid' => $user['user_id']]);
@@ -72,6 +75,21 @@ if (!$existing) {
     }
     if ($attemptTableAvailable && !$attempt) {
         sendError('Start the exam before loading its questions.', 'ATTEMPT_NOT_STARTED', 403);
+    }
+    if ($attempt) {
+        $attemptId = (int) $attempt['attempt_id'];
+        if (!examProctoringAttemptColumnAvailable($pdo)) {
+            sendError(
+                'The attempt-scoped proctoring migration is missing on the server. Ask your administrator to apply migration_attempt_scoped_proctoring.sql.',
+                'SERVER_MISCONFIGURED',
+                500
+            );
+        }
+        try {
+            $currentExitAttempts = countAttemptTabSwitches($pdo, (int) $exam['exam_id'], (int) $user['user_id'], $attemptId);
+        } catch (PDOException $e) {
+            sendError('The server could not read this attempt\'s proctoring state.', 'SERVER_MISCONFIGURED', 500);
+        }
     }
 }
 
@@ -202,6 +220,8 @@ sendSuccess([
         'availability_end'     => $exam['end_time'],
         'time_started'         => $attempt['started_at'] ?? null,
         'deadline'             => $attempt['deadline_at'] ?? null,
+        'attempt_id'           => $attemptId,
+        'current_exit_attempts' => $currentExitAttempts,
         'time_started_epoch'   => !empty($attempt['started_at']) ? strtotime($attempt['started_at']) : null,
         'deadline_epoch'       => !empty($attempt['deadline_at']) ? strtotime($attempt['deadline_at']) : null,
         'teacher_name'         => trim($exam['teacher_first_name'] . ' ' . $exam['teacher_last_name']),
@@ -211,6 +231,8 @@ sendSuccess([
     'availability_end' => $exam['end_time'],
     'time_started' => $attempt['started_at'] ?? null,
     'deadline' => $attempt['deadline_at'] ?? null,
+    'attempt_id' => $attemptId,
+    'current_exit_attempts' => $currentExitAttempts,
     'time_started_epoch' => !empty($attempt['started_at']) ? strtotime($attempt['started_at']) : null,
     'deadline_epoch' => !empty($attempt['deadline_at']) ? strtotime($attempt['deadline_at']) : null,
     'max_exit_attempts' => $maxExitAttempts,

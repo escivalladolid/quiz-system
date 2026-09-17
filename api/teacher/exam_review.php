@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_status.php';
 require_once __DIR__ . '/../../helpers/exam_grading.php';
+require_once __DIR__ . '/../../helpers/exam_attempts.php';
 
 header('Content-Type: application/json');
 
@@ -38,6 +39,7 @@ try {
     if (!$exam) {
         sendError('Exam not found.', 'NOT_FOUND', 404);
     }
+    $attemptScopedProctoring = examProctoringAttemptColumnAvailable($pdo);
 
     // Per-student review: ?exam_id=X&student_id=Y
     $studentId = isset($_GET['student_id']) ? (int) $_GET['student_id'] : 0;
@@ -57,14 +59,19 @@ $subStmt = $pdo->prepare(
             sendError('No submission found for this student.', 'NOT_FOUND', 404);
         }
 
-        // Tab-switch log timestamps for this student (most recent first).
-        $logStmt = $pdo->prepare(
-            "SELECT created_at FROM exam_proctoring_log
-             WHERE exam_id = :eid AND user_id = :uid AND event_type = 'TAB_SWITCH'
-             ORDER BY created_at DESC"
-        );
-        $logStmt->execute(['eid' => $examId, 'uid' => $studentId]);
-        $tabSwitchLog = array_map(fn($r) => $r['created_at'], $logStmt->fetchAll());
+        // Tab-switch log timestamps for the submission's current attempt.
+        $attempt = resolveExamAttempt($pdo, $examId, $studentId);
+        $tabSwitchLog = [];
+        if ($attemptScopedProctoring && $attempt) {
+            $logStmt = $pdo->prepare(
+                "SELECT created_at FROM exam_proctoring_log
+                 WHERE exam_id = :eid AND user_id = :uid AND attempt_id = :aid
+                   AND event_type = 'TAB_SWITCH'
+                 ORDER BY created_at DESC"
+            );
+            $logStmt->execute(['eid' => $examId, 'uid' => $studentId, 'aid' => (int) $attempt['attempt_id']]);
+            $tabSwitchLog = array_map(fn($r) => $r['created_at'], $logStmt->fetchAll());
+        }
 
 $subScore   = (int) $submission['score'];
         $maxPts    = (int) $exam['max_points'];
@@ -100,14 +107,20 @@ $subScore   = (int) $submission['score'];
         ]);
     }
 
-    // Submission list
-$listStmt = $pdo->prepare(
+    // Submission list. Counts are restricted to the latest persisted attempt;
+    // legacy rows without an attempt id cannot contaminate a new attempt.
+    $tabSwitchCountExpr = $attemptScopedProctoring
+        ? "(SELECT COUNT(*) FROM exam_proctoring_log p
+             WHERE p.exam_id = s.exam_id AND p.user_id = s.user_id
+               AND p.attempt_id = (SELECT MAX(ea.attempt_id) FROM exam_attempts ea
+                                   WHERE ea.exam_id = s.exam_id AND ea.user_id = s.user_id)
+               AND p.event_type = 'TAB_SWITCH')"
+        : 'COALESCE(s.exit_attempts, 0)';
+    $listStmt = $pdo->prepare(
         'SELECT s.submission_id, s.user_id, s.score, s.correct_count, s.total_questions,
                 s.time_used_secs, s.submitted_at, s.results_released, s.released_at,
                 u.first_name, u.last_name,
-                (SELECT COUNT(*) FROM exam_proctoring_log p
-                  WHERE p.exam_id = s.exam_id AND p.user_id = s.user_id
-                    AND p.event_type = \'TAB_SWITCH\') AS tab_switch_count
+                ' . $tabSwitchCountExpr . ' AS tab_switch_count
          FROM exam_submissions s
          JOIN users u ON u.user_id = s.user_id
 WHERE s.exam_id = :eid

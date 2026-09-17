@@ -4,6 +4,7 @@ require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/../helpers/exam_status.php';
 require_once __DIR__ . '/../helpers/exam_monitoring.php';
+require_once __DIR__ . '/../helpers/exam_attempts.php';
 
 header('Content-Type: application/json');
 
@@ -18,6 +19,7 @@ requireFields($input, ['exam_id']);
 
 $examId = (int) $input['exam_id'];
 $studentId = (int) $user['user_id'];
+$requestedAttemptId = examAttemptIdFromInput($input);
 $eventType = strtoupper(trim((string) ($input['event_type'] ?? 'HEARTBEAT')));
 $allowedEvents = [
     'EXAM_STARTED', 'HEARTBEAT', 'ACTIVE', 'BACKGROUND',
@@ -49,6 +51,16 @@ try {
         sendError('You are not enrolled in this class.', 'NOT_ENROLLED', 403);
     }
 
+    $attempt = resolveExamAttempt($pdo, $examId, $studentId, $requestedAttemptId);
+    if (!$attempt && $eventType !== 'SUBMITTED') {
+        sendError(
+            $requestedAttemptId !== null ? 'The supplied exam attempt is not valid.' : 'Start the exam before sending monitoring data.',
+            $requestedAttemptId !== null ? 'INVALID_ATTEMPT' : 'ATTEMPT_NOT_STARTED',
+            403
+        );
+    }
+    $attemptId = $attempt ? (int) $attempt['attempt_id'] : null;
+
     $submissionStmt = $pdo->prepare(
         'SELECT 1 FROM exam_submissions WHERE exam_id = :eid AND user_id = :uid'
     );
@@ -75,6 +87,7 @@ try {
 
     $activityLogFailed = false;
     $recorded = recordExamActivity($pdo, $examId, $studentId, $eventType, [
+        'attempt_id' => $attemptId,
         'question_id' => $questionId,
         'question_index' => isset($input['question_index']) ? (int) $input['question_index'] : null,
         'answered_count' => isset($input['answered_count']) ? (int) $input['answered_count'] : null,
@@ -89,7 +102,7 @@ try {
     $legacyRecorded = false;
     $activityLogAvailable = examActivityLogAvailable($pdo);
     if (($activityLogFailed || !$activityLogAvailable) && $eventType !== 'HEARTBEAT') {
-        $legacyRecorded = recordLegacyExamActivity($pdo, $examId, $studentId, $eventType);
+        $legacyRecorded = recordLegacyExamActivity($pdo, $examId, $studentId, $eventType, $attemptId);
     }
 
     $monitoringAvailable = examMonitoringTablesAvailable($pdo);
@@ -101,6 +114,7 @@ try {
         'recorded' => $recorded || $legacyRecorded,
         'monitoring_available' => $monitoringAvailable,
         'activity_log_available' => $activityLogAvailable,
+        'attempt_id' => $attemptId,
     ]);
 } catch (PDOException $e) {
     sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);

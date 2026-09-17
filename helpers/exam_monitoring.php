@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/exam_attempts.php';
 
 /**
  * Best-effort, app-level exam monitoring.
@@ -91,6 +92,8 @@ function recordExamActivity(PDO $pdo, int $examId, int $userId, string $eventTyp
         ? (int) $context['total_questions'] : null;
     $networkState = isset($context['network_state'])
         ? substr(strtoupper(trim((string) $context['network_state'])), 0, 16) : null;
+    $attemptId = isset($context['attempt_id']) && (int) $context['attempt_id'] > 0
+        ? (int) $context['attempt_id'] : null;
     $status = examMonitoringStatusForEvent($eventType);
 
     $recorded = false;
@@ -98,19 +101,35 @@ function recordExamActivity(PDO $pdo, int $examId, int $userId, string $eventTyp
     // history row would create unnecessary database growth.
     if ($activityAvailable && $eventType !== 'HEARTBEAT') {
         try {
-            $eventStmt = $pdo->prepare(
-                'INSERT INTO exam_activity_log
-                    (exam_id, user_id, event_type, question_id, question_index,
-                     answered_count, total_questions, network_state, created_at)
-                 VALUES (:eid, :uid, :event, :qid, :qindex, :answered, :total,
-                         :network, NOW())'
-            );
-            $eventStmt->execute([
-                'eid' => $examId, 'uid' => $userId, 'event' => $eventType,
-                'qid' => $questionId, 'qindex' => $questionIndex,
-                'answered' => $answeredCount, 'total' => $totalQuestions,
-                'network' => $networkState,
-            ]);
+            if ($attemptId !== null && examActivityAttemptColumnAvailable($pdo)) {
+                $eventStmt = $pdo->prepare(
+                    'INSERT INTO exam_activity_log
+                        (exam_id, user_id, attempt_id, event_type, question_id, question_index,
+                         answered_count, total_questions, network_state, created_at)
+                     VALUES (:eid, :uid, :aid, :event, :qid, :qindex, :answered, :total,
+                             :network, NOW())'
+                );
+                $eventStmt->execute([
+                    'eid' => $examId, 'uid' => $userId, 'aid' => $attemptId, 'event' => $eventType,
+                    'qid' => $questionId, 'qindex' => $questionIndex,
+                    'answered' => $answeredCount, 'total' => $totalQuestions,
+                    'network' => $networkState,
+                ]);
+            } else {
+                $eventStmt = $pdo->prepare(
+                    'INSERT INTO exam_activity_log
+                        (exam_id, user_id, event_type, question_id, question_index,
+                         answered_count, total_questions, network_state, created_at)
+                     VALUES (:eid, :uid, :event, :qid, :qindex, :answered, :total,
+                             :network, NOW())'
+                );
+                $eventStmt->execute([
+                    'eid' => $examId, 'uid' => $userId, 'event' => $eventType,
+                    'qid' => $questionId, 'qindex' => $questionIndex,
+                    'answered' => $answeredCount, 'total' => $totalQuestions,
+                    'network' => $networkState,
+                ]);
+            }
             $recorded = true;
         } catch (PDOException $e) {
             // The caller can retain this event in the legacy audit table if
@@ -162,13 +181,21 @@ function recordExamActivity(PDO $pdo, int $examId, int $userId, string $eventTyp
  * not installed yet. The legacy table has no rich context, but retaining the
  * event lets teachers see screenshot/multi-window alerts immediately.
  */
-function recordLegacyExamActivity(PDO $pdo, int $examId, int $userId, string $eventType): bool {
+function recordLegacyExamActivity(PDO $pdo, int $examId, int $userId, string $eventType, ?int $attemptId = null): bool {
     try {
-        $stmt = $pdo->prepare(
-            'INSERT INTO exam_proctoring_log (exam_id, user_id, event_type, created_at)
-             VALUES (:eid, :uid, :event, NOW())'
-        );
-        $stmt->execute(['eid' => $examId, 'uid' => $userId, 'event' => $eventType]);
+        if ($attemptId !== null && examProctoringAttemptColumnAvailable($pdo)) {
+            $stmt = $pdo->prepare(
+                'INSERT INTO exam_proctoring_log (exam_id, user_id, attempt_id, event_type, created_at)
+                 VALUES (:eid, :uid, :aid, :event, NOW())'
+            );
+            $stmt->execute(['eid' => $examId, 'uid' => $userId, 'aid' => $attemptId, 'event' => $eventType]);
+        } else {
+            $stmt = $pdo->prepare(
+                'INSERT INTO exam_proctoring_log (exam_id, user_id, event_type, created_at)
+                 VALUES (:eid, :uid, :event, NOW())'
+            );
+            $stmt->execute(['eid' => $examId, 'uid' => $userId, 'event' => $eventType]);
+        }
         return true;
     } catch (PDOException $e) {
         return false;

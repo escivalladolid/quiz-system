@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS exam_activity_log (
     activity_id      BIGINT AUTO_INCREMENT PRIMARY KEY,
     exam_id          INT NOT NULL,
     user_id          INT NOT NULL,
+    attempt_id       INT NULL,
     event_type       VARCHAR(30) NOT NULL,
     question_id      INT NULL,
     question_index   INT NULL,
@@ -33,6 +34,8 @@ CREATE TABLE IF NOT EXISTS exam_activity_log (
     created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_activity_exam_created (exam_id, created_at),
     KEY idx_activity_exam_user (exam_id, user_id, created_at),
+    KEY idx_activity_attempt_scope (exam_id, user_id, attempt_id, event_type, created_at),
     FOREIGN KEY (exam_id) REFERENCES exams(exam_id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (attempt_id) REFERENCES exam_attempts(attempt_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

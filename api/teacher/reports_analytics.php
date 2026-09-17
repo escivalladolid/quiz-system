@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/exam_attempts.php';
 
 header('Content-Type: application/json');
 
@@ -76,11 +77,16 @@ try {
     // older database has not installed the monitoring migration.
     $activity_flag_map = [];
     try {
+        $activityAttemptScope = examActivityAttemptColumnAvailable($pdo)
+            ? " AND a.attempt_id = (SELECT MAX(ea.attempt_id) FROM exam_attempts ea
+                                    WHERE ea.exam_id = a.exam_id AND ea.user_id = a.user_id)"
+            : ' AND 1 = 0';
         $activityStmt = $pdo->prepare(
             "SELECT exam_id, user_id, COUNT(*) AS flag_count
-             FROM exam_activity_log
+             FROM exam_activity_log a
              WHERE exam_id IN ($placeholders)
                AND event_type IN ('TAB_SWITCH','MULTI_WINDOW','SCREENSHOT','SCREEN_RECORDING','CLOSED')
+               $activityAttemptScope
              GROUP BY exam_id, user_id"
         );
         $activityStmt->execute($target_ids);
