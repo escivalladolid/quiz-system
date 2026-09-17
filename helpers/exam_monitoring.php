@@ -66,7 +66,8 @@ function examMonitoringStatusForEvent(string $eventType): string {
  * Store one activity event and update the latest presence row.
  * Returns false when the optional monitoring migration is not installed.
  */
-function recordExamActivity(PDO $pdo, int $examId, int $userId, string $eventType, array $context = []): bool {
+function recordExamActivity(PDO $pdo, int $examId, int $userId, string $eventType, array $context = [], ?bool &$activityLogFailed = null): bool {
+    $activityLogFailed = false;
     $eventType = strtoupper(trim($eventType));
     $allowed = [
         'EXAM_STARTED', 'HEARTBEAT', 'ACTIVE', 'BACKGROUND',
@@ -93,10 +94,10 @@ function recordExamActivity(PDO $pdo, int $examId, int $userId, string $eventTyp
     $status = examMonitoringStatusForEvent($eventType);
 
     $recorded = false;
-    try {
-        // Heartbeats update presence only. Persisting every 10-second pulse as
-        // a history row would create unnecessary database growth.
-        if ($activityAvailable && $eventType !== 'HEARTBEAT') {
+    // Heartbeats update presence only. Persisting every 10-second pulse as a
+    // history row would create unnecessary database growth.
+    if ($activityAvailable && $eventType !== 'HEARTBEAT') {
+        try {
             $eventStmt = $pdo->prepare(
                 'INSERT INTO exam_activity_log
                     (exam_id, user_id, event_type, question_id, question_index,
@@ -111,9 +112,15 @@ function recordExamActivity(PDO $pdo, int $examId, int $userId, string $eventTyp
                 'network' => $networkState,
             ]);
             $recorded = true;
+        } catch (PDOException $e) {
+            // The caller can retain this event in the legacy audit table if
+            // the new activity table is temporarily unavailable.
+            $activityLogFailed = true;
         }
+    }
 
-        if ($presenceAvailable) {
+    if ($presenceAvailable) {
+        try {
             $presenceStmt = $pdo->prepare(
             'INSERT INTO exam_live_presence
                 (exam_id, user_id, status, current_question_id, question_index,
@@ -141,11 +148,10 @@ function recordExamActivity(PDO $pdo, int $examId, int $userId, string $eventTyp
             'event'    => $eventType,
             ]);
             $recorded = true;
+        } catch (PDOException $e) {
+            // Monitoring is telemetry, never a gate for starting, saving, or
+            // submitting an exam. A transient telemetry DB failure is ignored.
         }
-    } catch (PDOException $e) {
-        // Monitoring is telemetry, never a gate for starting, saving, or
-        // submitting an exam. A transient telemetry DB failure is ignored.
-        return $recorded;
     }
 
     return $recorded;

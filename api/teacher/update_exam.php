@@ -25,7 +25,7 @@ if (!$input || !isset($input['exam_id'])) {
 $exam_id = $input['exam_id'];
 
 try {
-    $stmt = $pdo->prepare("SELECT e.exam_id, e.start_time, e.end_time FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.exam_id=? AND c.teacher_id=?");
+    $stmt = $pdo->prepare("SELECT e.exam_id, e.start_time, e.end_time, e.max_exit_attempts FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.exam_id=? AND c.teacher_id=?");
     $stmt->execute([$exam_id, $teacher_id]);
     $examRow = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$examRow) {
@@ -168,7 +168,14 @@ try {
     if (empty($updates)) {
         $pdo->commit();
         if (!empty($input['questions']) && !$hasSubmissions) {
-            sendSuccess(['message' => 'Exam questions updated successfully']);
+            $confirmedMaxExitAttempts = filter_var($examRow['max_exit_attempts'] ?? null, FILTER_VALIDATE_INT);
+            if ($confirmedMaxExitAttempts === false || $confirmedMaxExitAttempts < 1 || $confirmedMaxExitAttempts > 10) {
+                sendError('The exam has no valid maximum exit-attempt limit configured.', 'SERVER_MISCONFIGURED', 500);
+            }
+            sendSuccess([
+                'message' => 'Exam questions updated successfully',
+                'max_exit_attempts' => $confirmedMaxExitAttempts,
+            ]);
         } else {
             sendError('No fields to update.', 'BAD_REQUEST', 400);
         }
@@ -177,7 +184,16 @@ try {
         $stmt = $pdo->prepare("UPDATE exams SET " . implode(', ', $updates) . " WHERE exam_id=?");
         $stmt->execute($params);
         $pdo->commit();
-        sendSuccess(['message' => 'Exam updated successfully']);
+        $confirmedStmt = $pdo->prepare('SELECT max_exit_attempts FROM exams WHERE exam_id = ?');
+        $confirmedStmt->execute([$exam_id]);
+        $confirmedMaxExitAttempts = $confirmedStmt->fetchColumn();
+        if ($confirmedMaxExitAttempts === false || $confirmedMaxExitAttempts === null) {
+            sendError('The exam exit-attempt limit was not stored.', 'DB_ERROR', 500);
+        }
+        sendSuccess([
+            'message' => 'Exam updated successfully',
+            'max_exit_attempts' => (int) $confirmedMaxExitAttempts,
+        ]);
     }
 } catch (InvalidArgumentException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();

@@ -177,6 +177,11 @@ foreach ($questions as $q) {
     $totalPointsFromQuestions += (int) ($q['points'] ?? 1);
 }
 
+$maxExitAttempts = filter_var($exam['max_exit_attempts'] ?? null, FILTER_VALIDATE_INT);
+if ($maxExitAttempts === false || $maxExitAttempts < 1 || $maxExitAttempts > 10) {
+    sendError('This exam has no valid maximum exit-attempt limit configured.', 'SERVER_MISCONFIGURED', 500);
+}
+
 sendSuccess([
     'exam' => [
         'exam_id'              => $exam['exam_id'],
@@ -192,7 +197,7 @@ sendSuccess([
         'total_points_from_questions' => $totalPointsFromQuestions,
         'randomize_questions'  => (int) ($exam['randomize_questions'] ?? 0),
         'randomize_options'    => (int) ($exam['randomize_options'] ?? 0),
-        'max_exit_attempts'    => $exam['max_exit_attempts'] ?? null,
+        'max_exit_attempts'    => $maxExitAttempts,
         'availability_start'   => $exam['start_time'],
         'availability_end'     => $exam['end_time'],
         'time_started'         => $attempt['started_at'] ?? null,
@@ -208,6 +213,7 @@ sendSuccess([
     'deadline' => $attempt['deadline_at'] ?? null,
     'time_started_epoch' => !empty($attempt['started_at']) ? strtotime($attempt['started_at']) : null,
     'deadline_epoch' => !empty($attempt['deadline_at']) ? strtotime($attempt['deadline_at']) : null,
+    'max_exit_attempts' => $maxExitAttempts,
     'submitted'  => $existing ? true : false,
     'previous_answers' => $existing ? $previousAnswers : null,
     'revisions'  => $savedRevisions,

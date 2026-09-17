@@ -47,6 +47,11 @@ if (!$exam) {
     sendError('Exam not found.', 'NOT_FOUND', 404);
 }
 
+$maxExitAttempts = filter_var($exam['max_exit_attempts'] ?? null, FILTER_VALIDATE_INT);
+if ($maxExitAttempts === false || $maxExitAttempts < 1 || $maxExitAttempts > 10) {
+    sendError('This exam has no valid maximum exit-attempt limit configured.', 'SERVER_MISCONFIGURED', 500);
+}
+
 // Students may start only LIVE exams.
 $examStatus = strtoupper((string)$exam['status']);
 if ($examStatus !== 'LIVE') {
@@ -162,10 +167,14 @@ $startedAt = $attempt['started_at'] ?? null;
 $deadlineAt = $attempt['deadline_at'] ?? null;
 
 if ($starting && $attempt) {
+    $activityLogFailed = false;
     recordExamActivity($pdo, $examId, $studentId, 'EXAM_STARTED', [
         'total_questions' => $questionCount,
         'network_state' => 'ONLINE',
-    ]);
+    ], $activityLogFailed);
+    if ($activityLogFailed || !examActivityLogAvailable($pdo)) {
+        recordLegacyExamActivity($pdo, $examId, $studentId, 'EXAM_STARTED');
+    }
 }
 
 sendSuccess([
@@ -179,7 +188,7 @@ sendSuccess([
     'passing_score'         => $exam['passing_score'] ?? null,
     'randomize_questions'   => (int) ($exam['randomize_questions'] ?? 0),
     'randomize_options'     => (int) ($exam['randomize_options'] ?? 0),
-    'max_exit_attempts'     => $exam['max_exit_attempts'] ?? null,
+    'max_exit_attempts'     => $maxExitAttempts,
     'teacher_name'          => trim($exam['teacher_first_name'] . ' ' . $exam['teacher_last_name']),
     'subject_name'          => $exam['subject_name'],
     'availability_start'    => $exam['start_time'],

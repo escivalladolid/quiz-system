@@ -73,21 +73,22 @@ try {
         }
     }
 
+    $activityLogFailed = false;
     $recorded = recordExamActivity($pdo, $examId, $studentId, $eventType, [
         'question_id' => $questionId,
         'question_index' => isset($input['question_index']) ? (int) $input['question_index'] : null,
         'answered_count' => isset($input['answered_count']) ? (int) $input['answered_count'] : null,
         'total_questions' => isset($input['total_questions']) ? (int) $input['total_questions'] : null,
         'network_state' => $input['network_state'] ?? null,
-    ]);
+    ], $activityLogFailed);
 
     // If the newer activity history migration is not present, retain the
     // security events that teachers need in the legacy feed. This is only a
     // compatibility path; once exam_activity_log exists, it is the source of
     // truth and no duplicate legacy row is written.
     $legacyRecorded = false;
-    if (!examActivityLogAvailable($pdo)
-            && in_array($eventType, ['SCREENSHOT', 'SCREEN_RECORDING', 'MULTI_WINDOW', 'SUBMITTED', 'CLOSED'], true)) {
+    $activityLogAvailable = examActivityLogAvailable($pdo);
+    if (($activityLogFailed || !$activityLogAvailable) && $eventType !== 'HEARTBEAT') {
         $legacyRecorded = recordLegacyExamActivity($pdo, $examId, $studentId, $eventType);
     }
 
@@ -99,7 +100,7 @@ try {
     sendSuccess([
         'recorded' => $recorded || $legacyRecorded,
         'monitoring_available' => $monitoringAvailable,
-        'activity_log_available' => examActivityLogAvailable($pdo),
+        'activity_log_available' => $activityLogAvailable,
     ]);
 } catch (PDOException $e) {
     sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);

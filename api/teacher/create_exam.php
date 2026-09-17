@@ -111,7 +111,17 @@ try {
 
     $pdo->commit();
 
-    sendSuccess(['exam_id' => $exam_id], 201);
+    $confirmedStmt = $pdo->prepare('SELECT max_exit_attempts FROM exams WHERE exam_id = ?');
+    $confirmedStmt->execute([$exam_id]);
+    $confirmedMaxExitAttempts = $confirmedStmt->fetchColumn();
+    if ($confirmedMaxExitAttempts === false || $confirmedMaxExitAttempts === null) {
+        sendError('The exam exit-attempt limit was not stored.', 'DB_ERROR', 500);
+    }
+
+    sendSuccess([
+        'exam_id' => $exam_id,
+        'max_exit_attempts' => (int) $confirmedMaxExitAttempts,
+    ], 201);
 } catch (InvalidArgumentException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     sendError($e->getMessage(), 'INVALID_QUESTIONS', 422);

@@ -18,6 +18,20 @@ $input = getJsonInput();
 $employeeNumber = isset($input['employee_number']) ? trim($input['employee_number']) : '';
 $password = isset($input['password']) ? (string) $input['password'] : '';
 $emailGiven = isset($input['email']) ? trim((string) $input['email']) : '';
+$firstNameGiven = trim((string) ($input['first_name'] ?? ''));
+$lastNameGiven = trim((string) ($input['last_name'] ?? ''));
+$fullNameGiven = trim((string) ($input['full_name'] ?? ''));
+
+// Keep the roster check reversible while the institution is onboarding
+// teachers. Production should leave this enabled; setting the environment
+// variable to "false" temporarily allows a teacher to provide their own name
+// while email verification remains mandatory.
+$rosterRequired = true;
+$rosterRequiredSetting = getenv('TEACHER_ROSTER_REQUIRED');
+if ($rosterRequiredSetting !== false && trim((string) $rosterRequiredSetting) !== '') {
+    $parsedRosterRequired = filter_var($rosterRequiredSetting, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+    if ($parsedRosterRequired !== null) $rosterRequired = $parsedRosterRequired;
+}
 
 if ($employeeNumber === '') {
     sendError('Employee number is required.', 'MISSING_FIELDS', 422);
@@ -42,22 +56,30 @@ if ($requestedUsername !== '' && !preg_match('/^[A-Za-z][A-Za-z0-9_.]{2,29}$/D',
 $pdo = getDbConnection();
 
 try {
-    $stmt = $pdo->prepare('SELECT employee_number, full_name, department, email FROM teacher_roster WHERE employee_number = ?');
-    $stmt->execute([$employeeNumber]);
-    $roster = $stmt->fetch();
+    $roster = null;
+    if ($employeeNumber !== '') {
+        $stmt = $pdo->prepare('SELECT employee_number, full_name, department, email FROM teacher_roster WHERE employee_number = ?');
+        $stmt->execute([$employeeNumber]);
+        $roster = $stmt->fetch();
+    }
 
-    if (!$roster) {
+    if (!$roster && $rosterRequired) {
         sendError('Employee number not found in the employed list. Please verify with the Admin Office.', 'EMP_NOT_FOUND', 404);
     }
 
-    $rosterEmail = trim((string) ($roster['email'] ?? ''));
-    if ($rosterEmail !== '' && strcasecmp($rosterEmail, $emailGiven) !== 0) {
-        sendError('The email does not match the official teacher roster. Please contact the Admin Office.', 'EMAIL_MISMATCH', 422);
+    if ($roster) {
+        $rosterEmail = trim((string) ($roster['email'] ?? ''));
+        if ($rosterEmail !== '' && strcasecmp($rosterEmail, $emailGiven) !== 0) {
+            sendError('The email does not match the official teacher roster. Please contact the Admin Office.', 'EMAIL_MISMATCH', 422);
+        }
     }
 
-    $stmt = $pdo->prepare('SELECT user_id, status FROM users WHERE employee_number = ? AND role_id = 2');
-    $stmt->execute([$employeeNumber]);
-    $existing = $stmt->fetch();
+    $existing = null;
+    if ($employeeNumber !== '') {
+        $stmt = $pdo->prepare('SELECT user_id, status FROM users WHERE employee_number = ? AND role_id = 2');
+        $stmt->execute([$employeeNumber]);
+        $existing = $stmt->fetch();
+    }
     if ($existing) {
         if (($existing['status'] ?? '') === 'PENDING') {
             sendError('A pending account already exists. Check your email for the verification code or request a new one.', 'REGISTRATION_PENDING', 409);
@@ -71,7 +93,22 @@ try {
         sendError('That email address is already registered. Please use another email or reset the existing password.', 'EMAIL_ALREADY_REGISTERED', 409);
     }
 
-    splitFullName($roster['full_name'], $first, $last);
+    if ($roster) {
+        splitFullName($roster['full_name'], $first, $last);
+    } else {
+        if ($fullNameGiven !== '' && ($firstNameGiven === '' || $lastNameGiven === '')) {
+            splitFullName($fullNameGiven, $first, $last);
+        } else {
+            $first = $firstNameGiven;
+            $last = $lastNameGiven;
+        }
+        if ($first === '' || $last === '') {
+            sendError('First and last name are required when registering without a teacher roster entry.', 'NAME_REQUIRED', 422);
+        }
+    }
+    if (mb_strlen($first) > 100 || mb_strlen($last) > 100) {
+        sendError('First and last name must each be 100 characters or fewer.', 'INVALID_NAME', 422);
+    }
     $username = $requestedUsername !== '' ? $requestedUsername : generateUniqueUsername($pdo, $first, $last);
     $usernameCheck = $pdo->prepare('SELECT user_id FROM users WHERE username = ? LIMIT 1');
     $usernameCheck->execute([$username]);
@@ -86,7 +123,7 @@ try {
                             student_id, employee_number, year_level, section, status, role_id)
          VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, \'PENDING\', 2)'
     );
-    $stmt->execute([$first, $last, $username, $emailGiven, $hash, $employeeNumber]);
+    $stmt->execute([$first, $last, $username, $emailGiven, $hash, $employeeNumber !== '' ? $employeeNumber : null]);
     $user_id = (int) $pdo->lastInsertId();
 
     $verificationToken = generateEmailCode();
@@ -114,7 +151,10 @@ try {
     }
 
     $log = $pdo->prepare('INSERT INTO activity_logs (user_id, action, description) VALUES (?, ?, ?)');
-    $log->execute([$user_id, 'ACCOUNT_REGISTERED_PENDING', 'Teacher registered via official roster; email verification required.']);
+    $logDescription = $roster
+        ? 'Teacher registered via official roster; email verification required.'
+        : 'Teacher self-registered without a roster entry; email verification required.';
+    $log->execute([$user_id, 'ACCOUNT_REGISTERED_PENDING', $logDescription]);
     $pdo->commit();
 
     sendSuccess([
@@ -124,6 +164,7 @@ try {
         'last_name'  => $last,
         'username'   => $username,
         'email'      => $emailGiven,
+        'roster_validated' => (bool) $roster,
         'verification_required' => true,
         'expires_at' => $expiresAt,
     ], 201);

@@ -227,11 +227,15 @@ try {
             $answeredCount++;
         }
     }
+    $activityLogFailed = false;
     recordExamActivity($pdo, $examId, (int) $user['user_id'], 'SUBMITTED', [
         'answered_count' => $answeredCount,
         'total_questions' => $totalQuestions,
         'network_state' => 'ONLINE',
-    ]);
+    ], $activityLogFailed);
+    if ($activityLogFailed || !examActivityLogAvailable($pdo)) {
+        recordLegacyExamActivity($pdo, $examId, (int) $user['user_id'], 'SUBMITTED');
+    }
     sendSuccess($receipt);
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();

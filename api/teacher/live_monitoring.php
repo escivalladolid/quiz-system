@@ -34,14 +34,50 @@ try {
     $exam = $examStmt->fetch(PDO::FETCH_ASSOC);
     if (!$exam) sendError('Exam not found.', 'NOT_FOUND', 404);
 
+    $maxExitAttempts = filter_var($exam['max_exit_attempts'] ?? null, FILTER_VALIDATE_INT);
+    if ($maxExitAttempts === false || $maxExitAttempts < 1 || $maxExitAttempts > 10) {
+        sendError('This exam has no valid maximum exit-attempt limit configured.', 'SERVER_MISCONFIGURED', 500);
+    }
+    $exam['max_exit_attempts'] = $maxExitAttempts;
+
     $monitoringAvailable = examMonitoringTablesAvailable($pdo);
     $activityLogAvailable = examActivityLogAvailable($pdo);
+    $presenceAvailable = examPresenceTableAvailable($pdo);
+    $violationTable = $activityLogAvailable ? 'exam_activity_log' : 'exam_proctoring_log';
+    $violationCountsSql = "
+                     COALESCE(vc.tab_switch_count, 0) AS tab_switch_count,
+                     COALESCE(vc.screenshot_count, 0) AS screenshot_count,
+                     COALESCE(vc.multi_window_count, 0) AS multi_window_count,
+                     COALESCE(vc.screen_recording_count, 0) AS screen_recording_count,
+                     COALESCE(vc.background_count, 0) AS background_count,
+                     COALESCE(vc.total_violation_count, 0) AS total_violation_count,
+                     vc.last_security_event,
+                     vc.last_security_event_at,";
+    $violationJoinSql = "
+              LEFT JOIN (
+                  SELECT user_id,
+                         SUM(event_type = 'TAB_SWITCH') AS tab_switch_count,
+                         SUM(event_type = 'SCREENSHOT') AS screenshot_count,
+                         SUM(event_type = 'MULTI_WINDOW') AS multi_window_count,
+                         SUM(event_type = 'SCREEN_RECORDING') AS screen_recording_count,
+                         SUM(event_type = 'BACKGROUND') AS background_count,
+                         SUM(event_type IN ('TAB_SWITCH', 'SCREENSHOT', 'MULTI_WINDOW',
+                             'SCREEN_RECORDING', 'BACKGROUND', 'CLOSED')) AS total_violation_count,
+                         SUBSTRING_INDEX(GROUP_CONCAT(
+                             CASE WHEN event_type IN ('TAB_SWITCH', 'SCREENSHOT', 'MULTI_WINDOW',
+                                 'SCREEN_RECORDING', 'BACKGROUND', 'CLOSED') THEN event_type END
+                             ORDER BY created_at DESC SEPARATOR ','), ',', 1) AS last_security_event,
+                         MAX(CASE WHEN event_type IN ('TAB_SWITCH', 'SCREENSHOT', 'MULTI_WINDOW',
+                             'SCREEN_RECORDING', 'BACKGROUND', 'CLOSED') THEN created_at END) AS last_security_event_at
+                  FROM {$violationTable}
+                  WHERE exam_id = :vid
+                  GROUP BY user_id
+              ) vc ON vc.user_id = u.user_id";
     if ($monitoringAvailable) {
         $studentsStmt = $pdo->prepare(
             'SELECT u.user_id, u.first_name, u.last_name,
-                    es.score, es.exit_attempts, es.auto_submitted, es.submitted_at,
-                    COALESCE(pc.cnt, 0) AS tab_switch_count,
-                    COALESCE(pc.last_at, lp.last_seen_at) AS last_activity,
+                    es.score, es.exit_attempts, es.auto_submitted, es.submitted_at,' . $violationCountsSql . '
+                    COALESCE(vc.last_security_event_at, lp.last_seen_at) AS last_activity,
                     lp.status AS presence_status,
                     lp.current_question_id, lp.question_index,
                     lp.answered_count, lp.total_questions,
@@ -51,12 +87,7 @@ try {
              JOIN users u ON u.user_id = en.user_id
              LEFT JOIN exam_submissions es
                ON es.exam_id = :eid AND es.user_id = u.user_id
-             LEFT JOIN (
-                 SELECT user_id, COUNT(*) AS cnt, MAX(created_at) AS last_at
-                 FROM exam_proctoring_log
-                 WHERE exam_id = :eid2 AND event_type = \'TAB_SWITCH\'
-                 GROUP BY user_id
-             ) pc ON pc.user_id = u.user_id
+             ' . $violationJoinSql . '
              LEFT JOIN exam_live_presence lp
                ON lp.exam_id = :eid3 AND lp.user_id = u.user_id
              WHERE en.class_id = :cid
@@ -64,7 +95,7 @@ try {
         );
         $studentsStmt->execute([
             'eid' => $examId,
-            'eid2' => $examId,
+            'vid' => $examId,
             'eid3' => $examId,
             'cid' => $exam['class_id'],
         ]);
@@ -73,25 +104,19 @@ try {
         // is being applied. This preserves the original tab-switch view.
         $studentsStmt = $pdo->prepare(
             'SELECT u.user_id, u.first_name, u.last_name,
-                    es.score, es.exit_attempts, es.auto_submitted, es.submitted_at,
-                    COALESCE(pc.cnt, 0) AS tab_switch_count,
-                    pc.last_at AS last_activity
+                    es.score, es.exit_attempts, es.auto_submitted, es.submitted_at,' . $violationCountsSql . '
+                    vc.last_security_event_at AS last_activity
              FROM enrollments en
              JOIN users u ON u.user_id = en.user_id
              LEFT JOIN exam_submissions es
                ON es.exam_id = :eid AND es.user_id = u.user_id
-             LEFT JOIN (
-                 SELECT user_id, COUNT(*) AS cnt, MAX(created_at) AS last_at
-                 FROM exam_proctoring_log
-                 WHERE exam_id = :eid2 AND event_type = \'TAB_SWITCH\'
-                 GROUP BY user_id
-             ) pc ON pc.user_id = u.user_id
+             ' . $violationJoinSql . '
              WHERE en.class_id = :cid
              ORDER BY u.last_name, u.first_name'
         );
         $studentsStmt->execute([
             'eid' => $examId,
-            'eid2' => $examId,
+            'vid' => $examId,
             'cid' => $exam['class_id'],
         ]);
     }
@@ -138,6 +163,12 @@ try {
         $student['progress_percent'] = $total > 0 ? round(($answered / $total) * 100, 1) : 0;
         $student['question_index'] = isset($student['question_index']) ? (int) $student['question_index'] : 0;
         $student['tab_switch_count'] = (int) ($student['tab_switch_count'] ?? 0);
+        $student['screenshot_count'] = (int) ($student['screenshot_count'] ?? 0);
+        $student['multi_window_count'] = (int) ($student['multi_window_count'] ?? 0);
+        $student['screen_recording_count'] = (int) ($student['screen_recording_count'] ?? 0);
+        $student['background_count'] = (int) ($student['background_count'] ?? 0);
+        $student['total_violation_count'] = (int) ($student['total_violation_count'] ?? 0);
+        $student['last_security_event'] = $student['last_security_event'] ?? null;
         $student['seconds_since_seen'] = $secondsSinceSeen;
         $student['last_seen_at'] = $lastSeen;
         $student['last_activity'] = $student['last_activity'] ?? $lastSeen;
@@ -225,7 +256,6 @@ try {
              FROM exam_proctoring_log p
              JOIN users u ON u.user_id = p.user_id
              WHERE p.exam_id = :eid
-               AND p.event_type IN ('TAB_SWITCH', 'SCREENSHOT', 'SCREEN_RECORDING', 'MULTI_WINDOW', 'SUBMITTED', 'CLOSED')
              ORDER BY p.created_at DESC
              LIMIT 50"
         );
@@ -233,15 +263,59 @@ try {
         foreach ($logStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $name = trim($row['first_name'] . ' ' . $row['last_name']);
             $type = strtoupper((string) $row['event_type']);
-            $message = $name . ' left the exam screen';
-            if ($type === 'SCREENSHOT') $message = $name . ' attempted to capture a screenshot';
-            elseif ($type === 'SCREEN_RECORDING') $message = $name . ' started screen recording';
-            elseif ($type === 'MULTI_WINDOW') $message = $name . ' entered split-screen or multi-window mode';
-            elseif ($type === 'SUBMITTED') $message = $name . ' submitted the exam';
-            elseif ($type === 'CLOSED') $message = $name . ' left the exam';
+            $feedType = 'info';
+            switch ($type) {
+                case 'TAB_SWITCH':
+                    $message = $name . ' left the exam screen';
+                    $feedType = 'warning';
+                    break;
+                case 'BACKGROUND':
+                case 'CLOSED':
+                    $message = $name . ' left the exam app';
+                    $feedType = 'warning';
+                    break;
+                case 'SCREENSHOT':
+                    $message = $name . ' attempted to capture a screenshot';
+                    $feedType = 'warning';
+                    break;
+                case 'SCREEN_RECORDING':
+                    $message = $name . ' started screen recording';
+                    $feedType = 'warning';
+                    break;
+                case 'MULTI_WINDOW':
+                    $message = $name . ' entered split-screen or multi-window mode';
+                    $feedType = 'warning';
+                    break;
+                case 'SUBMITTED':
+                    $message = $name . ' submitted the exam';
+                    $feedType = 'auto_submit';
+                    break;
+                case 'EXAM_STARTED':
+                    $message = $name . ' started the exam';
+                    break;
+                case 'QUESTION_VIEWED':
+                    $message = $name . ' viewed a question';
+                    break;
+                case 'ANSWER_CHANGED':
+                    $message = $name . ' updated an answer';
+                    break;
+                case 'NETWORK_LOST':
+                    $message = $name . ' lost network connection';
+                    $feedType = 'warning';
+                    break;
+                case 'NETWORK_RESTORED':
+                    $message = $name . ' restored network connection';
+                    break;
+                case 'ACTIVE':
+                    $message = $name . ' returned to the exam';
+                    break;
+                default:
+                    $message = $name . ' generated an exam activity event';
+                    break;
+            }
             $events[] = [
                 'student_name' => $name,
-                'type' => 'warning',
+                'type' => $feedType,
                 'event_type' => $type,
                 'message' => $message,
                 'occurred_at' => $row['created_at'],
@@ -258,7 +332,9 @@ try {
         'students' => $students,
         'events' => $events,
         'monitoring_available' => $monitoringAvailable,
+        'presence_available' => $presenceAvailable,
         'activity_log_available' => $activityLogAvailable,
+        'max_exit_attempts' => $exam['max_exit_attempts'],
         'summary' => [
             'active' => $activeCount,
             'away' => $awayCount,
