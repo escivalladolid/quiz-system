@@ -28,10 +28,12 @@ try {
         $total_students += (int)$c['student_count'];
     }
 
-    $placeholders = str_repeat('?,', count($classes) - 1) . '?';
-    $class_ids = array_column($classes, 'class_id');
+    // An empty class list is valid for a new teacher. Build the IN clause
+    // only when there are IDs; str_repeat(..., -1) throws on PHP 8.
+    $class_ids = array_map('intval', array_column($classes, 'class_id'));
     $live_exams = 0;
-    if ($class_ids) {
+    if (count($class_ids) > 0) {
+        $placeholders = implode(',', array_fill(0, count($class_ids), '?'));
         $stmt2 = $pdo->prepare("SELECT COUNT(*) FROM exams WHERE class_id IN ($placeholders) AND status='LIVE'");
         $stmt2->execute($class_ids);
         $live_exams = (int)$stmt2->fetchColumn();
@@ -45,6 +47,7 @@ try {
             'live_exams' => $live_exams
         ]
     ]);
-} catch (PDOException $e) {
-    sendError('Database error: ' . $e->getMessage(), 'DB_ERROR', 500);
+} catch (Throwable $e) {
+    error_log('Teacher classes endpoint failed: ' . get_class($e) . ' - ' . $e->getMessage());
+    sendError('Could not load classes right now. Please try again.', 'DB_ERROR', 500);
 }
