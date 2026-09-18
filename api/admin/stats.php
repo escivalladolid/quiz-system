@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -21,9 +22,9 @@ try {
         (SELECT COUNT(*) FROM users WHERE role_id = 1 AND created_at >= NOW() - INTERVAL 7 DAY) AS new_students_7d,
         (SELECT COUNT(*) FROM users WHERE role_id = 2 AND created_at >= NOW() - INTERVAL 7 DAY) AS new_teachers_7d,
         (SELECT COUNT(*) FROM classes) AS total_classes,
-        (SELECT COUNT(*) FROM classes WHERE status = 'ACTIVE') AS active_classes,
+        (SELECT COUNT(*) FROM classes WHERE " . activeSql() . ") AS active_classes,
         (SELECT COUNT(*) FROM exams) AS total_exams,
-        (SELECT COUNT(*) FROM exams WHERE status = 'LIVE') AS live_exams,
+        (SELECT COUNT(*) FROM exams WHERE status = 'LIVE' AND " . activeSql() . ") AS live_exams,
         (SELECT COUNT(*) FROM questions) AS total_questions,
         (SELECT COUNT(*) FROM exam_submissions) AS total_submissions,
         (SELECT COUNT(*) FROM exam_submissions WHERE submitted_at >= NOW() - INTERVAL 1 DAY) AS submissions_last_24h,

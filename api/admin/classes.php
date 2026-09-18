@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -22,8 +23,7 @@ $where = [];
 $params = [];
 
 if ($status !== '' && in_array($status, ['ACTIVE', 'ARCHIVED'], true)) {
-    $where[] = 'c.status = :status';
-    $params['status'] = $status;
+    $where[] = $status === 'ARCHIVED' ? archivedSql('c') : activeSql('c');
 }
 if ($teacherId > 0) {
     $where[] = 'c.teacher_id = :teacher_id';
@@ -49,7 +49,7 @@ $offset = ($page - 1) * $perPage;
 
 $stmt = $pdo->prepare(
     "SELECT c.class_id, c.subject_code, c.subject_name, c.block, c.class_code,
-            c.status, c.created_at, c.teacher_id,
+            c.status, c.is_archived, c.archived_at, c.created_at, c.teacher_id,
             t.first_name AS teacher_first_name, t.last_name AS teacher_last_name,
             (SELECT COUNT(*) FROM enrollments e WHERE e.class_id = c.class_id) AS enrolled_count,
             (SELECT COUNT(*) FROM exams x WHERE x.class_id = c.class_id) AS exam_count
@@ -61,11 +61,15 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute($params);
 $classes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+foreach ($classes as &$classRow) {
+    addEffectiveArchiveFields($classRow);
+}
+unset($classRow);
 
 $sum = $pdo->query("SELECT
     (SELECT COUNT(*) FROM classes) AS total,
-    (SELECT COUNT(*) FROM classes WHERE status = 'ACTIVE') AS active,
-    (SELECT COUNT(*) FROM classes WHERE status = 'ARCHIVED') AS archived
+    (SELECT COUNT(*) FROM classes WHERE " . activeSql() . ") AS active,
+    (SELECT COUNT(*) FROM classes WHERE " . archivedSql() . ") AS archived
 ")->fetch(PDO::FETCH_ASSOC);
 
 sendSuccess([

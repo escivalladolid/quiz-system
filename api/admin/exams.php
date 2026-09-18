@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -23,8 +24,12 @@ $where = [];
 $params = [];
 
 if ($status !== '' && in_array($status, $allowedStatuses, true)) {
-    $where[] = 'e.status = :status';
-    $params['status'] = $status;
+    $where[] = $status === 'ARCHIVED'
+        ? '(' . archivedSql('e') . ' OR ' . archivedSql('c') . ')'
+        : ($status === 'CLOSED' ? "e.status = 'CLOSED' AND " . activeSql('e') . ' AND ' . activeSql('c') : 'e.status = :status AND ' . activeSql('e') . ' AND ' . activeSql('c'));
+    if ($status !== 'ARCHIVED' && $status !== 'CLOSED') {
+        $params['status'] = $status;
+    }
 }
 if ($classId > 0) {
     $where[] = 'e.class_id = :class_id';
@@ -48,9 +53,9 @@ $page = min($page, $pages);
 $offset = ($page - 1) * $perPage;
 
 $stmt = $pdo->prepare(
-    "SELECT e.exam_id, e.exam_name, e.status, e.start_time, e.end_time, e.duration_minutes,
+    "SELECT e.exam_id, e.exam_name, e.status, e.is_archived, e.archived_at, e.start_time, e.end_time, e.duration_minutes,
             e.passing_score, e.total_points, e.hold_scores, e.is_closed, e.closed_at, e.created_at, e.class_id,
-            c.subject_name, c.subject_code, c.block,
+            c.subject_name, c.subject_code, c.block, c.status AS class_status, c.is_archived AS class_is_archived,
             (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.exam_id) AS question_count,
             (SELECT COALESCE(SUM(q.points), 0) FROM questions q WHERE q.exam_id = e.exam_id) AS points_count,
             (SELECT COUNT(*) FROM exam_submissions s WHERE s.exam_id = e.exam_id) AS submission_count,
@@ -67,14 +72,28 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute($params);
 $exams = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$summary = $pdo->query(
-    "SELECT status, COUNT(*) AS cnt FROM exams GROUP BY status"
-)->fetchAll(PDO::FETCH_ASSOC);
-$summaryMap = ['DRAFT' => 0, 'SCHEDULED' => 0, 'LIVE' => 0, 'CLOSED' => 0, 'ARCHIVED' => 0];
-foreach ($summary as $row) {
-    $summaryMap[$row['status']] = (int) $row['cnt'];
+foreach ($exams as &$examRow) {
+    if ((int) ($examRow['class_is_archived'] ?? 0) === 1
+        || strtoupper((string) ($examRow['class_status'] ?? '')) === 'ARCHIVED') {
+        $examRow['is_archived'] = 1;
+    }
+    addEffectiveArchiveFields($examRow);
 }
+unset($examRow);
+
+$summaryMap = ['DRAFT' => 0, 'SCHEDULED' => 0, 'LIVE' => 0, 'CLOSED' => 0, 'ARCHIVED' => 0];
+$summaryRows = $pdo->query("SELECT
+    SUM(CASE WHEN " . activeSql('e') . " AND e.status='DRAFT' AND " . activeSql('c') . " THEN 1 ELSE 0 END) AS draft_count,
+    SUM(CASE WHEN " . activeSql('e') . " AND e.status='SCHEDULED' AND " . activeSql('c') . " THEN 1 ELSE 0 END) AS scheduled_count,
+    SUM(CASE WHEN " . activeSql('e') . " AND e.status='LIVE' AND " . activeSql('c') . " THEN 1 ELSE 0 END) AS live_count,
+    SUM(CASE WHEN " . activeSql('e') . " AND e.status='CLOSED' AND " . activeSql('c') . " THEN 1 ELSE 0 END) AS closed_count,
+    SUM(CASE WHEN " . archivedSql('e') . " OR " . archivedSql('c') . " THEN 1 ELSE 0 END) AS archived_count
+    FROM exams e JOIN classes c ON c.class_id=e.class_id")->fetch(PDO::FETCH_ASSOC);
+$summaryMap['DRAFT'] = (int) ($summaryRows['draft_count'] ?? 0);
+$summaryMap['SCHEDULED'] = (int) ($summaryRows['scheduled_count'] ?? 0);
+$summaryMap['LIVE'] = (int) ($summaryRows['live_count'] ?? 0);
+$summaryMap['CLOSED'] = (int) ($summaryRows['closed_count'] ?? 0);
+$summaryMap['ARCHIVED'] = (int) ($summaryRows['archived_count'] ?? 0);
 
 sendSuccess([
     'page' => $page,

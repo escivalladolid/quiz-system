@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -20,6 +21,7 @@ if ($exam_id <= 0) {
 try {
     $stmt = $pdo->prepare(
         "SELECT e.*, c.subject_name, c.subject_code, c.block,
+                c.status AS class_status, c.is_archived AS class_is_archived, c.archived_at AS class_archived_at,
                 (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.exam_id) AS question_count,
                 (SELECT COALESCE(SUM(q.points), 0) FROM questions q WHERE q.exam_id = e.exam_id) AS points_count
          FROM exams e JOIN classes c ON c.class_id = e.class_id
@@ -30,6 +32,12 @@ try {
     if (!$exam) {
         sendError('Exam not found.', 'NOT_FOUND', 404);
     }
+    if ((int) ($exam['class_is_archived'] ?? 0) === 1
+        || strtoupper((string) ($exam['class_status'] ?? '')) === 'ARCHIVED') {
+        $exam['is_archived'] = 1;
+        $exam['archived_at'] = $exam['archived_at'] ?? $exam['class_archived_at'] ?? null;
+    }
+    addEffectiveArchiveFields($exam);
 
     $questions = $pdo->prepare('SELECT question_id, question_type, question_text, options, points, correct_answer, answer_matching, order_num
                                 FROM questions WHERE exam_id = ? ORDER BY order_num, question_id');

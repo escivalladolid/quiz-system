@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -25,7 +26,7 @@ try {
             (SELECT COALESCE(AVG(CASE WHEN qtp.tp > 0 THEN (es.score / qtp.tp) * 100 END), 0)
              FROM exam_submissions es
              LEFT JOIN (SELECT exam_id, COALESCE(SUM(points), 0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id = es.exam_id) AS avg_pct,
-            (SELECT COUNT(*) FROM classes WHERE status = 'ACTIVE') AS active_classes,
+            (SELECT COUNT(*) FROM classes WHERE " . activeSql() . ") AS active_classes,
             (SELECT COUNT(*) FROM exams) AS exam_count
         "
     )->fetch(PDO::FETCH_ASSOC);
