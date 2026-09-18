@@ -5,6 +5,7 @@ require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/../helpers/exam_status.php';
 require_once __DIR__ . '/../helpers/exam_monitoring.php';
 require_once __DIR__ . '/../helpers/exam_attempts.php';
+require_once __DIR__ . '/../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -36,12 +37,15 @@ try {
     syncExamStatuses($pdo);
 
     $examStmt = $pdo->prepare(
-        'SELECT e.exam_id, e.status, e.class_id
-         FROM exams e WHERE e.exam_id = :eid'
+        'SELECT e.exam_id, e.status, e.is_archived, c.status AS class_status, c.is_archived AS class_is_archived, e.class_id
+         FROM exams e JOIN classes c ON c.class_id=e.class_id WHERE e.exam_id = :eid'
     );
     $examStmt->execute(['eid' => $examId]);
     $exam = $examStmt->fetch();
     if (!$exam) sendError('Exam not found.', 'NOT_FOUND', 404);
+    $isArchived = ((int) ($exam['is_archived'] ?? 0) === 1 || (int) ($exam['class_is_archived'] ?? 0) === 1
+        || strtoupper((string) ($exam['status'] ?? '')) === 'ARCHIVED'
+        || strtoupper((string) ($exam['class_status'] ?? '')) === 'ARCHIVED');
 
     $enrollStmt = $pdo->prepare(
         'SELECT 1 FROM enrollments WHERE user_id = :uid AND class_id = :cid'
@@ -70,7 +74,7 @@ try {
     if ($alreadySubmitted && $eventType !== 'SUBMITTED') {
         sendError('This exam has already been submitted.', 'ALREADY_SUBMITTED', 409);
     }
-    if (!$alreadySubmitted && strtoupper((string) $exam['status']) !== 'LIVE') {
+    if (!$alreadySubmitted && ($isArchived || strtoupper((string) $exam['status']) !== 'LIVE')) {
         sendError('This exam is closed.', 'EXAM_CLOSED', 403);
     }
 

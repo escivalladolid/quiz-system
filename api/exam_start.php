@@ -4,6 +4,7 @@ require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/../helpers/exam_status.php';
 require_once __DIR__ . '/../helpers/exam_monitoring.php';
+require_once __DIR__ . '/../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -33,6 +34,7 @@ $examStmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.description, e.duration_minutes, e.status,
             e.total_points, e.passing_score, e.randomize_questions, e.randomize_options,
             e.max_exit_attempts, e.start_time, e.end_time, e.is_closed, e.hold_scores,
+            e.is_archived, e.archived_at, c.status AS class_status, c.is_archived AS class_is_archived,
             c.class_id, c.subject_name,
             u.first_name AS teacher_first_name, u.last_name AS teacher_last_name
      FROM exams e
@@ -50,6 +52,12 @@ if (!$exam) {
 $maxExitAttempts = filter_var($exam['max_exit_attempts'] ?? null, FILTER_VALIDATE_INT);
 if ($maxExitAttempts === false || $maxExitAttempts < 1 || $maxExitAttempts > 10) {
     sendError('This exam has no valid maximum exit-attempt limit configured.', 'SERVER_MISCONFIGURED', 500);
+}
+
+if ((int) ($exam['is_archived'] ?? 0) === 1 || (int) ($exam['class_is_archived'] ?? 0) === 1
+    || strtoupper((string) ($exam['status'] ?? '')) === 'ARCHIVED'
+    || strtoupper((string) ($exam['class_status'] ?? '')) === 'ARCHIVED') {
+    sendError('This exam has been archived and is no longer available.', 'EXAM_ARCHIVED', 403);
 }
 
 // Students may start only LIVE exams.
@@ -183,7 +191,9 @@ sendSuccess([
     'exam_name'             => $exam['exam_name'],
     'description'           => $exam['description'],
     'duration_minutes'      => $exam['duration_minutes'],
-    'status'                => $exam['status'],
+    'status'                => effectiveArchiveStatus($exam),
+    'is_archived'           => ((int) ($exam['is_archived'] ?? 0) === 1 || (int) ($exam['class_is_archived'] ?? 0) === 1) ? 1 : 0,
+    'archived_at'           => $exam['archived_at'] ?? null,
     'total_points'          => $exam['total_points'],
     'total_points_from_questions' => $totalPointsFromQuestions,
     'passing_score'         => $exam['passing_score'] ?? null,

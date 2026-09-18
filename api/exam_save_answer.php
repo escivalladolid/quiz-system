@@ -4,6 +4,7 @@ require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/../helpers/exam_status.php';
 require_once __DIR__ . '/../helpers/exam_attempts.php';
+require_once __DIR__ . '/../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -31,13 +32,20 @@ syncExamStatuses($pdo);
 
 // Verify the exam exists and is still live
 $examStmt = $pdo->prepare(
-    'SELECT e.exam_id, e.status, e.class_id FROM exams e WHERE e.exam_id = :eid'
+    'SELECT e.exam_id, e.status, e.is_archived, c.status AS class_status, c.is_archived AS class_is_archived, e.class_id
+       FROM exams e JOIN classes c ON c.class_id=e.class_id WHERE e.exam_id = :eid'
 );
 $examStmt->execute(['eid' => $examId]);
 $exam = $examStmt->fetch();
 
 if (!$exam) {
     sendError('Exam not found.', 'NOT_FOUND', 404);
+}
+
+if ((int) ($exam['is_archived'] ?? 0) === 1 || (int) ($exam['class_is_archived'] ?? 0) === 1
+    || strtoupper((string) ($exam['status'] ?? '')) === 'ARCHIVED'
+    || strtoupper((string) ($exam['class_status'] ?? '')) === 'ARCHIVED') {
+    sendError('This exam has been archived and no longer accepts answers.', 'EXAM_ARCHIVED', 403);
 }
 
 // If the exam became CLOSED/ARCHIVED, immediately reject any further saves.

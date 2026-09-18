@@ -6,6 +6,7 @@ require_once __DIR__ . '/../helpers/exam_status.php';
 require_once __DIR__ . '/../helpers/exam_grading.php';
 require_once __DIR__ . '/../helpers/exam_attempts.php';
 require_once __DIR__ . '/../helpers/exam_monitoring.php';
+require_once __DIR__ . '/../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -26,7 +27,8 @@ try {
     syncExamStatuses($pdo);
 
     $examStmt = $pdo->prepare(
-        'SELECT e.exam_id, e.status, e.max_exit_attempts, e.hold_scores,
+        'SELECT e.exam_id, e.status, e.is_archived, e.archived_at, c.status AS class_status, c.is_archived AS class_is_archived,
+                e.max_exit_attempts, e.hold_scores,
                 e.is_closed, e.passing_score, c.class_id
          FROM exams e
          JOIN classes c ON c.class_id = e.class_id
@@ -42,7 +44,10 @@ try {
     // A student may still have an active attempt when the availability window
     // closes. Keep processing that attempt so the server can finalize its
     // saved answers instead of returning EXAM_CLOSED with no submission.
-    $availabilityClosed = strtoupper((string) $exam['status']) !== 'LIVE';
+    $isArchived = ((int) ($exam['is_archived'] ?? 0) === 1 || (int) ($exam['class_is_archived'] ?? 0) === 1
+        || strtoupper((string) ($exam['status'] ?? '')) === 'ARCHIVED'
+        || strtoupper((string) ($exam['class_status'] ?? '')) === 'ARCHIVED');
+    $availabilityClosed = $isArchived || strtoupper((string) $exam['status']) !== 'LIVE';
 
     $maxExitAttempts = filter_var($exam['max_exit_attempts'] ?? null, FILTER_VALIDATE_INT);
     if ($maxExitAttempts === false || $maxExitAttempts < 1 || $maxExitAttempts > 10) {

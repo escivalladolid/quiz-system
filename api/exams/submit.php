@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../helpers/exam_status.php';
 require_once __DIR__ . '/../../helpers/exam_grading.php';
 require_once __DIR__ . '/../../helpers/exam_attempts.php';
 require_once __DIR__ . '/../../helpers/exam_monitoring.php';
+require_once __DIR__ . '/../../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -63,9 +64,11 @@ $buildReceipt = function (PDO $pdo, array $sub, ?float $passingScore, bool $scor
 
 // Get exam
 $examStmt = $pdo->prepare(
-    'SELECT e.exam_id, e.status, e.is_closed, e.hold_scores, e.class_id,
+    'SELECT e.exam_id, e.status, e.is_archived, e.archived_at,
+            e.is_closed, e.hold_scores, e.class_id,
+            c.status AS class_status, c.is_archived AS class_is_archived,
             e.passing_score, e.max_exit_attempts
-     FROM exams e WHERE e.exam_id = :eid'
+     FROM exams e JOIN classes c ON c.class_id = e.class_id WHERE e.exam_id = :eid'
 );
 $examStmt->execute(['eid' => $examId]);
 $exam = $examStmt->fetch();
@@ -74,6 +77,9 @@ if (!$exam) {
     sendError('Exam not found.', 'NOT_FOUND', 404);
 }
 $passingScore = $exam['passing_score'] !== null ? (float) $exam['passing_score'] : null;
+$isArchived = ((int) ($exam['is_archived'] ?? 0) === 1 || (int) ($exam['class_is_archived'] ?? 0) === 1
+    || strtoupper((string) ($exam['status'] ?? '')) === 'ARCHIVED'
+    || strtoupper((string) ($exam['class_status'] ?? '')) === 'ARCHIVED');
 $maxExitAttempts = filter_var($exam['max_exit_attempts'] ?? null, FILTER_VALIDATE_INT);
 if ($maxExitAttempts === false || $maxExitAttempts < 1 || $maxExitAttempts > 10) {
     error_log('Invalid max_exit_attempts for exam ' . $examId . '; refusing to use a fallback.');
@@ -81,6 +87,7 @@ if ($maxExitAttempts === false || $maxExitAttempts < 1 || $maxExitAttempts > 10)
 }
 $scoresVisible = ((int) ($exam['is_closed'] ?? 0) === 1)
     || strtoupper((string) ($exam['status'] ?? '')) === 'CLOSED'
+    || $isArchived
     || (int) ($exam['hold_scores'] ?? 0) === 0;
 
 // If the student has already submitted, this is a resume/resubmit attempt.
@@ -159,7 +166,7 @@ if ($deadlineExpired && !$autoSubmitted && $examStatus === 'LIVE') {
 // window closes is the expected auto-submit path. Finalize the already-started
 // attempt instead of rejecting it; the server marks the receipt as automatic
 // regardless of whether the client managed to set the flag before losing focus.
-$finalAutoSubmitted = $autoSubmitted || $examStatus !== 'LIVE' || (bool) $deadlineExpired
+$finalAutoSubmitted = $autoSubmitted || $isArchived || $examStatus !== 'LIVE' || (bool) $deadlineExpired
     || $exitAttempts >= (int) $maxExitAttempts;
 
 // Fetch all questions for this exam

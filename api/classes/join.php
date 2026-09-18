@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -16,7 +17,7 @@ requireFields($input, ['class_code']);
 
 $code = strtoupper(trim($input['class_code']));
 
-$stmt = $pdo->prepare('SELECT class_id, subject_code, subject_name, block FROM classes WHERE class_code = :code');
+$stmt = $pdo->prepare('SELECT class_id, subject_code, subject_name, block FROM classes WHERE class_code = :code AND ' . activeSql());
 $stmt->execute(['code' => $code]);
 $class = $stmt->fetch();
 

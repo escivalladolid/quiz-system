@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
+require_once __DIR__ . '/../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -19,7 +20,7 @@ $classStmt = $pdo->prepare(
     'SELECT c.class_id, c.subject_code, c.subject_name
      FROM classes c
      JOIN enrollments e ON e.class_id = c.class_id
-     WHERE e.user_id = :uid
+     WHERE e.user_id = :uid AND ' . activeSql('c') . '
      ORDER BY c.subject_code ASC'
 );
 $classStmt->execute(['uid' => $studentId]);
@@ -39,7 +40,7 @@ foreach ($classes as $class) {
          FROM enrollments e
          JOIN users u ON u.user_id = e.user_id
          LEFT JOIN exam_submissions s ON s.user_id = u.user_id
-            AND s.exam_id IN (SELECT exam_id FROM exams WHERE class_id = :cid)
+            AND s.exam_id IN (SELECT exam_id FROM exams WHERE class_id = :cid AND ' . activeSql() . ')
          LEFT JOIN (SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id) qtp
             ON qtp.exam_id = s.exam_id
          WHERE e.class_id = :cid2

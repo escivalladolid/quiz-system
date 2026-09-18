@@ -5,6 +5,7 @@ require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/../helpers/exam_status.php';
 require_once __DIR__ . '/../helpers/exam_grading.php';
 require_once __DIR__ . '/../helpers/exam_attempts.php';
+require_once __DIR__ . '/../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -26,7 +27,8 @@ syncExamStatuses($pdo);
 $examStmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.description, e.duration_minutes, e.status,
             e.total_points, e.passing_score, e.hold_scores, e.randomize_questions, e.randomize_options,
-            e.max_exit_attempts, e.start_time, e.end_time,
+            e.max_exit_attempts, e.start_time, e.end_time, e.is_archived, e.archived_at,
+            c.status AS class_status, c.is_archived AS class_is_archived,
             c.class_id, c.subject_name,
             u.first_name AS teacher_first_name, u.last_name AS teacher_last_name
      FROM exams e
@@ -40,6 +42,10 @@ $exam = $examStmt->fetch();
 if (!$exam) {
     sendError('Exam not found.', 'NOT_FOUND', 404);
 }
+
+$isArchived = ((int) ($exam['is_archived'] ?? 0) === 1 || (int) ($exam['class_is_archived'] ?? 0) === 1
+    || strtoupper((string) ($exam['status'] ?? '')) === 'ARCHIVED'
+    || strtoupper((string) ($exam['class_status'] ?? '')) === 'ARCHIVED');
 
 $enrollCheck = $pdo->prepare('SELECT 1 FROM enrollments WHERE user_id = :uid AND class_id = :cid');
 $enrollCheck->execute(['uid' => $user['user_id'], 'cid' => $exam['class_id']]);
@@ -122,6 +128,9 @@ if (!$existing) {
 // taking it, block further access unless a submission already exists (so
 // results remain viewable).
 $examStatus = strtoupper((string)$exam['status']);
+if ($isArchived && !$existing) {
+    sendError('This exam has been archived and is no longer available.', 'EXAM_ARCHIVED', 403);
+}
 if ($examStatus !== 'LIVE' && !$existing && !$attempt) {
     sendError('This exam is not available for taking right now.', 'EXAM_NOT_OPEN', 403);
 }
@@ -206,7 +215,9 @@ sendSuccess([
         'exam_name'            => $exam['exam_name'],
         'description'          => $exam['description'],
         'duration_minutes'     => $exam['duration_minutes'],
-        'status'               => $exam['status'],
+        'status'               => $isArchived ? 'ARCHIVED' : effectiveArchiveStatus($exam),
+        'is_archived'          => $isArchived ? 1 : 0,
+        'archived_at'          => $exam['archived_at'] ?? null,
         'total_points'         => $exam['total_points'],
         'passing_score'        => $exam['passing_score'] ?? null,
         'hold_scores'          => (int) ($exam['hold_scores'] ?? 0),

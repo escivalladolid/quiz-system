@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/response.php';
 require_once __DIR__ . '/../helpers/auth.php';
 require_once __DIR__ . '/../helpers/exam_status.php';
+require_once __DIR__ . '/../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -19,6 +20,7 @@ syncExamStatuses($pdo);
 // All exams for classes the student is enrolled in, with submission status
 $stmt = $pdo->prepare(
     'SELECT e.exam_id, e.exam_name, e.duration_minutes, e.status AS exam_status,
+            e.is_archived, e.archived_at, c.status AS class_status, c.is_archived AS class_is_archived,
             e.total_points, e.hold_scores, e.is_closed, c.subject_code, c.subject_name, c.block,
             s.score, s.correct_count, s.total_questions, s.submission_id, s.results_released,
             qtp.tp
@@ -29,7 +31,8 @@ $stmt = $pdo->prepare(
      LEFT JOIN (
          SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id
      ) qtp ON qtp.exam_id = e.exam_id
-     WHERE e.status <> \'DRAFT\'
+     WHERE ' . activeSql('e') . ' AND ' . activeSql('c') . '
+       AND e.status <> \'DRAFT\'
      ORDER BY FIELD(e.status, \'LIVE\', \'SCHEDULED\', \'CLOSED\', \'ARCHIVED\'), e.exam_name ASC'
 );
 $stmt->execute(['uid' => $user['user_id'], 'uid2' => $user['user_id']]);
@@ -42,11 +45,16 @@ $exams = $stmt->fetchAll();
 // then the aggregate score stays hidden from the student even if the teacher
 // released their detailed review early (results_released = 1).
 foreach ($exams as &$ex) {
+    $ex['exam_status'] = ((int) ($ex['is_archived'] ?? 0) === 1
+        || (int) ($ex['class_is_archived'] ?? 0) === 1
+        || strtoupper((string) ($ex['class_status'] ?? '')) === 'ARCHIVED')
+        ? 'ARCHIVED' : strtoupper((string) ($ex['exam_status'] ?? ''));
     $examId     = (int) $ex['exam_id'];
     $earned     = $ex['score'] !== null ? (int) $ex['score'] : null;
     $totalPts   = $ex['score'] !== null ? (int) ($ex['tp'] ?? 0) : null;
     $scoresVisible = ((int) $ex['is_closed'] === 1)
         || strtoupper((string) $ex['exam_status']) === 'CLOSED'
+        || strtoupper((string) $ex['exam_status']) === 'ARCHIVED'
         || (int) ($ex['hold_scores'] ?? 0) === 0;
     $ex['has_submission'] = $ex['submission_id'] !== null;
     $ex['review_available'] = $ex['submission_id'] !== null
