@@ -37,7 +37,7 @@ $res = admin_api_request('GET', 'admin/users.php?per_page=50', [], $token);
 $data = admin_api_data($res, ['users' => []], 'Users', $dashboard_failures);
 $users = admin_array_rows($data['users'] ?? null);
 
-$res = admin_api_request('GET', 'admin/student_roster.php?per_page=100', [], $token);
+$res = admin_api_request('GET', 'admin/student_roster.php?per_page=2000', [], $token);
 $data = admin_api_data($res, ['students' => [], 'summary' => $studentRosterSummary], 'Student roster', $dashboard_failures);
 $studentRoster = admin_array_rows($data['students'] ?? null);
 if (is_array($data['summary'] ?? null)) {

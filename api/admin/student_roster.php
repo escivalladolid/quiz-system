@@ -15,7 +15,7 @@ requireRole($pdo, ['ADMIN']);
 $search = trim((string) ($_GET['search'] ?? ''));
 $status = strtoupper(trim((string) ($_GET['status'] ?? '')));
 $page = max(1, (int) ($_GET['page'] ?? 1));
-$perPage = min(100, max(1, (int) ($_GET['per_page'] ?? 50)));
+$perPage = min(2000, max(1, (int) ($_GET['per_page'] ?? 50)));
 
 $where = [];
 $params = [];
