@@ -29,7 +29,8 @@ $stmt = $pdo->prepare(
      LEFT JOIN (
          SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id
      ) qtp ON qtp.exam_id = e.exam_id
-     ORDER BY FIELD(e.status, \'LIVE\', \'SCHEDULED\', \'DRAFT\', \'CLOSED\', \'ARCHIVED\'), e.exam_name ASC'
+     WHERE e.status <> \'DRAFT\'
+     ORDER BY FIELD(e.status, \'LIVE\', \'SCHEDULED\', \'CLOSED\', \'ARCHIVED\'), e.exam_name ASC'
 );
 $stmt->execute(['uid' => $user['user_id'], 'uid2' => $user['user_id']]);
 $exams = $stmt->fetchAll();
