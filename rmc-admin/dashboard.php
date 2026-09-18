@@ -19,6 +19,8 @@ $stats = ['total_users'=>0,'total_students'=>0,'total_teachers'=>0,'total_admins
 $recent = [];
 $logs   = [];
 $users  = [];
+$studentRoster = [];
+$studentRosterSummary = ['total' => 0, 'registered' => 0, 'awaiting' => 0];
 $classes = [];
 $dashboard_failures = [];
 
@@ -34,6 +36,15 @@ $logs = admin_array_rows($data['logs'] ?? null);
 $res = admin_api_request('GET', 'admin/users.php?per_page=50', [], $token);
 $data = admin_api_data($res, ['users' => []], 'Users', $dashboard_failures);
 $users = admin_array_rows($data['users'] ?? null);
+
+$res = admin_api_request('GET', 'admin/student_roster.php?per_page=100', [], $token);
+$data = admin_api_data($res, ['students' => [], 'summary' => $studentRosterSummary], 'Student roster', $dashboard_failures);
+$studentRoster = admin_array_rows($data['students'] ?? null);
+if (is_array($data['summary'] ?? null)) {
+    foreach ($studentRosterSummary as $key => $value) {
+        $studentRosterSummary[$key] = (int) ($data['summary'][$key] ?? 0);
+    }
+}
 
 $res = admin_api_request('GET', 'admin/reports.php', [], $token);
 $data = admin_api_data($res, ['classes' => []], 'Reports', $dashboard_failures);
@@ -823,6 +834,10 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         User Management
       </li>
+      <li class="nav-item" data-view="students">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2.5"/><path d="M5.5 16c.8-2 2.2-3 3.5-3s2.7 1 3.5 3"/><path d="M15 9h3M15 13h3M15 17h3"/></svg>
+        Added Students
+      </li>
       <li class="nav-item" data-view="classes">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
         Class Management
@@ -1135,6 +1150,123 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
 
       </div>
 
+    </div>
+
+    <!-- ============ ADDED STUDENTS VIEW ============ -->
+    <div class="view" id="view-students">
+      <div class="topbar">
+        <div class="topbar-title">
+          <div class="hamburger" onclick="toggleSidebar()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </div>
+          <div>
+            <h1>Added Students</h1>
+            <div class="page-sub">Official roster entries and registration status</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="admin-menu">
+            <div class="admin-chip" onclick="toggleAdminMenu(this)">
+              <div class="avatar"><?php echo e($avatarChar); ?></div>
+              <div class="chip-text"><strong><?php echo e($adminShort); ?></strong><span>Administrator</span></div>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chip-caret"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="admin-dropdown">
+              <div class="admin-dropdown-divider"></div>
+              <form class="admin-logout-form" method="post" action="<?= e(admin_url('logout')) ?>">
+                <input type="hidden" name="csrf_token" value="<?= e(admin_csrf_token()) ?>">
+                <button class="admin-dropdown-item logout" type="submit">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Log Out
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <div class="search-box" style="width:280px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" placeholder="Search student no., name, or program" id="studentRosterSearch">
+            </div>
+            <span class="filter-chip student-roster-chip active" data-filter="ALL">All</span>
+            <span class="filter-chip student-roster-chip" data-filter="REGISTERED">Registered</span>
+            <span class="filter-chip student-roster-chip" data-filter="AWAITING">Not registered</span>
+          </div>
+          <div class="muted" style="font-size:12.5px;">
+            <?php echo number_format($studentRosterSummary['total']); ?> added ·
+            <?php echo number_format($studentRosterSummary['registered']); ?> registered ·
+            <?php echo number_format($studentRosterSummary['awaiting']); ?> awaiting registration
+          </div>
+        </div>
+
+        <div class="table-panel">
+          <div class="table-scroll">
+            <table id="studentRosterTable">
+              <thead>
+                <tr>
+                  <th>Student No.</th>
+                  <th>Student</th>
+                  <th>Program</th>
+                  <th>Roster email</th>
+                  <th>Account</th>
+                  <th>Added</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php foreach ($studentRoster as $student): ?>
+                  <?php
+                    $registered = !empty($student['user_id']);
+                    $studentName = trim((string) ($student['full_name'] ?? '')) ?: 'Unnamed student';
+                    $studentSearch = strtolower(trim(implode(' ', [
+                        (string) ($student['lrn'] ?? ''),
+                        $studentName,
+                        (string) ($student['program'] ?? ''),
+                        (string) ($student['email'] ?? ''),
+                        (string) ($student['username'] ?? ''),
+                    ])));
+                    $accountLabel = $registered
+                        ? '@' . (string) ($student['username'] ?? '') . ' · ' . (string) ($student['account_email'] ?? '')
+                        : 'No account yet';
+                    $addedDate = $student['imported_at'] ? date('M j, Y', strtotime((string) $student['imported_at'])) : '—';
+                  ?>
+                  <tr data-student-status="<?php echo $registered ? 'REGISTERED' : 'AWAITING'; ?>" data-student-search="<?php echo e($studentSearch); ?>">
+                    <td class="id-cell"><?php echo e($student['lrn'] ?? '—'); ?></td>
+                    <td class="name-cell">
+                      <div class="row-user">
+                        <div class="row-avatar"><?php echo e(strtoupper(mb_substr($studentName, 0, 1))); ?></div>
+                        <div><strong><?php echo e($studentName); ?></strong><span><?php echo e($student['program'] ?? 'Program not set'); ?></span></div>
+                      </div>
+                    </td>
+                    <td><?php echo e($student['program'] ?? '—'); ?></td>
+                    <td style="font-size:12.5px;color:var(--ink-soft);"><?php echo e($student['email'] ?? '—'); ?></td>
+                    <td>
+                      <span class="status-badge <?php echo $registered ? 'status-active' : 'status-pending'; ?>"><span class="status-dot"></span><?php echo $registered ? 'Registered' : 'Not registered'; ?></span>
+                      <div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;"><?php echo e($accountLabel); ?></div>
+                    </td>
+                    <td class="mono" style="font-size:12px;color:var(--ink-soft);"><?php echo e($addedDate); ?></td>
+                    <td>
+                      <?php if ($registered): ?>
+                        <button class="btn btn-ghost" type="button" data-student-edit="<?php echo (int) $student['user_id']; ?>" style="font-size:11.5px;padding:7px 10px;">Manage</button>
+                      <?php else: ?>
+                        <span style="font-size:11.5px;color:var(--ink-400);">Waiting for registration</span>
+                      <?php endif; ?>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+                <?php if (!count($studentRoster)): ?>
+                  <tr><td colspan="7" class="empty-state">No students have been added to the official roster yet.</td></tr>
+                <?php endif; ?>
+              </tbody>
+            </table>
+          </div>
+          <div class="table-note">Imported roster entries remain here even before a student creates an account. Use User Management to edit a registered account.</div>
+        </div>
+      </div>
     </div>
 
     <!-- ============ CLASS MANAGEMENT VIEW ============ -->
@@ -2149,6 +2281,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
       'csrf' => admin_csrf_token(),
   ]); ?>;
   window.USERS   = <?php echo admin_json_for_script($users); ?>;
+  window.STUDENT_ROSTER = <?php echo admin_json_for_script($studentRoster); ?>;
   window.CLASSES = <?php echo admin_json_for_script($classesAll); ?>;
   window.TEACHERS = <?php echo admin_json_for_script($teachers); ?>;
   window.EXAMS   = <?php echo admin_json_for_script($examsAll); ?>;
@@ -2199,6 +2332,35 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
       });
     });
   }
+
+  var studentRosterSearch = document.getElementById('studentRosterSearch');
+  var studentRosterFilter = 'ALL';
+  function applyStudentRosterFilter(){
+    var q = studentRosterSearch ? studentRosterSearch.value.toLowerCase().trim() : '';
+    document.querySelectorAll('#studentRosterTable tbody tr[data-student-status]').forEach(function(tr){
+      var statusHit = studentRosterFilter === 'ALL' || tr.getAttribute('data-student-status') === studentRosterFilter;
+      var textHit = !q || (tr.getAttribute('data-student-search') || '').indexOf(q) !== -1;
+      tr.style.display = statusHit && textHit ? '' : 'none';
+    });
+  }
+  document.querySelectorAll('.student-roster-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      studentRosterFilter = chip.getAttribute('data-filter') || 'ALL';
+      document.querySelectorAll('.student-roster-chip').forEach(function(c){ c.classList.remove('active'); });
+      chip.classList.add('active');
+      applyStudentRosterFilter();
+    });
+  });
+  if (studentRosterSearch) studentRosterSearch.addEventListener('input', applyStudentRosterFilter);
+  var studentRosterTable = document.getElementById('studentRosterTable');
+  if (studentRosterTable) studentRosterTable.addEventListener('click', function(e){
+    var btn = e.target.closest('[data-student-edit]');
+    if (!btn) return;
+    var id = Number(btn.getAttribute('data-student-edit'));
+    var usersNav = document.querySelector('.nav-item[data-view="users"]');
+    if (usersNav) usersNav.click();
+    window.setTimeout(function(){ openEditUser(id); }, 0);
+  });
 
   document.querySelectorAll('.switch').forEach(function(sw){
     sw.addEventListener('click', function(){ sw.classList.toggle('on'); });
