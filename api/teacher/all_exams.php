@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_status.php';
+require_once __DIR__ . '/../../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -21,7 +22,9 @@ try {
     syncExamStatuses($pdo);
 
     // Get teacher's classes for filter chips
-    $stmt = $pdo->prepare("SELECT class_id, subject_code, subject_name, block FROM classes WHERE teacher_id=? AND status='ACTIVE' ORDER BY subject_name");
+    $stmt = $pdo->prepare("SELECT class_id, subject_code, subject_name, block, is_archived, archived_at,
+                                  CASE WHEN COALESCE(is_archived,0)=1 OR status='ARCHIVED' THEN 'ARCHIVED' ELSE status END AS status
+                             FROM classes WHERE teacher_id=? AND " . activeSql() . " ORDER BY subject_name");
     $stmt->execute([$teacher_id]);
     $classes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -36,9 +39,12 @@ try {
             e.end_time,
             e.passing_score,
             e.total_points,
+            e.is_archived, e.archived_at,
             c.class_id,
             c.subject_name,
             c.block,
+            c.status AS class_status,
+            c.is_archived AS class_is_archived,
             (SELECT COUNT(*) FROM enrollments WHERE class_id=c.class_id) AS total_students,
             (SELECT COUNT(*) FROM exam_submissions WHERE exam_id=e.exam_id) AS submission_count,
             (SELECT COUNT(*) FROM questions WHERE exam_id=e.exam_id) AS question_count,
@@ -62,7 +68,15 @@ try {
         $exam = [
             'exam_id'          => (int)$r['exam_id'],
             'exam_name'        => $r['exam_name'],
-            'status'           => $r['status'],
+            'status'           => (((int) ($r['is_archived'] ?? 0) === 1
+                || (int) ($r['class_is_archived'] ?? 0) === 1
+                || strtoupper((string) $r['status']) === 'ARCHIVED'
+                || strtoupper((string) ($r['class_status'] ?? '')) === 'ARCHIVED')
+                ? 'ARCHIVED' : strtoupper((string) $r['status'])),
+            'is_archived'      => (int) (((int) ($r['is_archived'] ?? 0) === 1)
+                || ((int) ($r['class_is_archived'] ?? 0) === 1)
+                || strtoupper((string) ($r['class_status'] ?? '')) === 'ARCHIVED'),
+            'archived_at'      => $r['archived_at'] ?? null,
             'subject_name'     => $r['subject_name'],
             'block'            => $r['block'],
             'class_id'         => (int)$r['class_id'],
@@ -75,7 +89,10 @@ try {
             'class_average'    => $r['class_average'] ? (float)$r['class_average'] : null,
         ];
 
-        switch (strtoupper((string)$r['status'])) {
+        // Group by the effective status. A class archive also makes every
+        // child exam archived even when the exam row itself still says LIVE,
+        // SCHEDULED or DRAFT.
+        switch ($exam['status']) {
             case 'DRAFT':     $draft[] = $exam; break;
             case 'SCHEDULED': $scheduled[] = $exam; break;
             case 'LIVE':      $live[] = $exam; break;

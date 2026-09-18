@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_status.php';
 require_once __DIR__ . '/../../helpers/exam_grading.php';
+require_once __DIR__ . '/../../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -25,6 +26,7 @@ try {
     syncExamStatuses($pdo);
 
     $stmt = $pdo->prepare("SELECT e.*, c.subject_name, c.class_code,
+        c.is_archived AS class_is_archived, c.archived_at AS class_archived_at,
         (SELECT COUNT(*) FROM exam_submissions s WHERE s.exam_id = e.exam_id) AS submission_count,
         (SELECT COUNT(*) FROM enrollments en WHERE en.class_id = e.class_id) AS total_students
         FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.exam_id=? AND c.teacher_id=?");
@@ -34,6 +36,11 @@ try {
     if (!$exam) {
         sendError('Exam not found.', 'NOT_FOUND', 404);
     }
+    if ((int) ($exam['class_is_archived'] ?? 0) === 1) {
+        $exam['is_archived'] = 1;
+        $exam['archived_at'] = $exam['archived_at'] ?? $exam['class_archived_at'] ?? null;
+    }
+    addEffectiveArchiveFields($exam);
 
     $stmt2 = $pdo->prepare("SELECT * FROM questions WHERE exam_id=? ORDER BY order_num ASC");
     $stmt2->execute([$exam_id]);

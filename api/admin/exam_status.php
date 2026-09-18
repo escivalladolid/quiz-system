@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
+require_once __DIR__ . '/../../helpers/archive.php';
 
 header('Content-Type: application/json');
 
@@ -18,23 +19,24 @@ requireFields($input, ['exam_id', 'action']);
 $exam_id = (int) $input['exam_id'];
 $action  = strtolower(trim($input['action']));
 
-if (!in_array($action, ['force_close', 'schedule', 'archive'], true)) {
-    sendError('Invalid action. Use force_close, schedule or archive.', 'INVALID_ACTION', 422);
+if (!in_array($action, ['force_close', 'schedule', 'archive', 'unarchive'], true)) {
+    sendError('Invalid action. Use force_close, schedule, archive or unarchive.', 'INVALID_ACTION', 422);
 }
 
 try {
-    $stmt = $pdo->prepare('SELECT exam_id, exam_name, status FROM exams WHERE exam_id = ?');
+    $stmt = $pdo->prepare('SELECT exam_id, exam_name, status, is_archived, archived_at, is_closed FROM exams WHERE exam_id = ?');
     $stmt->execute([$exam_id]);
     $exam = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$exam) {
         sendError('Exam not found.', 'NOT_FOUND', 404);
     }
-    $oldStatus = $exam['status'];
+    $oldStatus = effectiveArchiveStatus($exam);
+    $isArchived = ((int) ($exam['is_archived'] ?? 0) === 1 || strtoupper((string) ($exam['status'] ?? '')) === 'ARCHIVED');
 
     $logDesc = null;
 
     if ($action === 'force_close') {
-        if ($oldStatus !== 'LIVE') {
+        if ($isArchived || $oldStatus !== 'LIVE') {
             sendError('Only a LIVE exam can be force-closed.', 'INVALID_STATE', 422);
         }
         $stmt = $pdo->prepare(
@@ -53,7 +55,7 @@ try {
         if (strtotime($end) <= strtotime($start)) {
             sendError('End time must be after start time.', 'INVALID_TIME', 422);
         }
-        if (in_array($oldStatus, ['LIVE', 'SCHEDULED'], true)) {
+        if ($isArchived || in_array($oldStatus, ['LIVE', 'SCHEDULED'], true)) {
             sendError('This exam is already ' . strtolower($oldStatus) . '.', 'INVALID_STATE', 422);
         }
         $stmt = $pdo->prepare(
@@ -64,25 +66,48 @@ try {
     }
 
     if ($action === 'archive') {
-        if ($oldStatus === 'ARCHIVED') {
+        if ($isArchived) {
             sendError('This exam is already archived.', 'INVALID_STATE', 422);
         }
         $stmt = $pdo->prepare(
-            "UPDATE exams SET status = 'ARCHIVED', is_closed = 1, closed_at = NOW(), end_time = NOW() WHERE exam_id = ?"
+            'UPDATE exams SET is_archived = 1, archived_at = COALESCE(archived_at, NOW()) WHERE exam_id = ?'
         );
         $stmt->execute([$exam_id]);
         $logDesc = "Archived exam {$exam['exam_name']}";
     }
 
+    if ($action === 'unarchive') {
+        if (!$isArchived) {
+            sendError('This exam is not archived.', 'INVALID_STATE', 422);
+        }
+        $stmt = $pdo->prepare(
+            "UPDATE exams SET is_archived = 0, archived_at = NULL,
+                    status = CASE WHEN status = 'ARCHIVED' THEN 'CLOSED' ELSE status END
+              WHERE exam_id = ?"
+        );
+        $stmt->execute([$exam_id]);
+        $logDesc = "Restored exam {$exam['exam_name']}";
+    }
+
     $log = $pdo->prepare('INSERT INTO activity_logs (user_id, action, description) VALUES (?, ?, ?)');
     $log->execute([$admin['user_id'], 'EXAM_STATUS', $logDesc]);
 
-    $stmt = $pdo->prepare('SELECT status FROM exams WHERE exam_id = ?');
+    $stmt = $pdo->prepare('SELECT status, is_archived, archived_at FROM exams WHERE exam_id = ?');
     $stmt->execute([$exam_id]);
-    $newStatus = $stmt->fetchColumn();
+    $result = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $newStatus = effectiveArchiveStatus($result);
 
-    sendSuccess(['exam_id' => $exam_id, 'previous_status' => $oldStatus, 'status' => $newStatus]);
+    sendSuccess([
+        'exam_id' => $exam_id,
+        'previous_status' => $oldStatus,
+        'status' => $newStatus,
+        'is_archived' => (int) ($result['is_archived'] ?? 0),
+        'archived_at' => $result['archived_at'] ?? null,
+    ]);
 } catch (PDOException $e) {
+    if ($e->getCode() === '42S22') {
+        sendError('Soft-archive migration is required before archiving exams.', 'ARCHIVE_MIGRATION_REQUIRED', 503);
+    }
     error_log('QuizSystem DB Error: ' . $e->getMessage());
     sendError('An unexpected error occurred. Please try again.', 'DB_ERROR', 500);
 }
