@@ -30,6 +30,16 @@ Options -Indexes
 
 # Clean admin URLs. Relative substitutions preserve local installation prefixes.
 RewriteEngine On
+# Canonical public landing-page URL. Keep index.html as the server entry file,
+# but present the cleaner root URL to visitors.
+# Serve the landing page at the canonical root. The PHP health endpoint
+# remains available at /index.php for operational checks.
+RewriteRule ^$ index.html [END]
+# Only direct browser GET/HEAD requests are redirected; form/API POSTs are untouched.
+RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
+RewriteCond %{THE_REQUEST} \s/+index\.html(?:[?\ ]|$) [NC]
+RewriteRule ^index\.html$ / [R=301,L,NE]
+
 # Render terminates TLS before Apache; never expose its internal port in redirects.
 RewriteRule ^ - [E=ADMIN_PUBLIC_ORIGIN:http://%{HTTP_HOST}]
 RewriteCond %{HTTPS} =on [OR]
