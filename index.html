@@ -191,6 +191,30 @@
   .btn-ghost:hover{border-color:#fff; transform:translateY(-2px);}
   .btn svg{width:17px;height:17px;}
 
+  .download-panel{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 118px;
+    align-items:center;
+    gap:18px;
+    max-width:520px;
+    margin-top:24px;
+    padding:15px 16px;
+    background:rgba(7,22,53,.48);
+    border:1px solid rgba(255,255,255,.2);
+    border-radius:14px;
+    box-shadow:0 12px 28px rgba(4,10,30,.16);
+    opacity:0;
+    animation:riseIn .7s .58s ease-out forwards;
+  }
+  .download-kicker{display:block;color:var(--gold);font-size:10px;font-weight:800;letter-spacing:.14em;margin-bottom:5px;}
+  .download-copy h2{color:#fff;font-family:'Fraunces',serif;font-size:20px;line-height:1.12;margin:0 0 7px;}
+  .download-copy p{color:rgba(255,255,255,.68);font-size:11.5px;line-height:1.45;margin:0 0 9px;}
+  .download-link{color:#fff;font-size:12px;font-weight:800;border-bottom:1px solid rgba(255,255,255,.55);padding-bottom:2px;}
+  .download-link:hover{color:var(--gold);border-color:var(--gold);}
+  .download-qr{display:block;background:#fff;border-radius:9px;padding:7px;justify-self:end;transition:transform .18s ease,box-shadow .18s ease;}
+  .download-qr:hover{transform:translateY(-2px);box-shadow:0 8px 18px rgba(0,0,0,.25);}
+  .download-qr img{display:block;width:104px;height:104px;image-rendering:pixelated;}
+
   .trust-row{
     margin-top:46px;
     display:flex;
@@ -383,6 +407,13 @@
     .hero-visual{height:520px; margin-top:20px;}
     .phone{width:280px; right:20px;}
     .phone-2{display:none;}
+    .download-panel{max-width:560px;}
+  }
+  @media (max-width:520px){
+    .download-panel{grid-template-columns:minmax(0,1fr) 92px;gap:12px;padding:13px;}
+    .download-copy h2{font-size:18px;}
+    .download-copy p{font-size:10.5px;}
+    .download-qr img{width:78px;height:78px;}
   }
 
   /* ---------- LOGO STRIP ---------- */
@@ -652,11 +683,22 @@
       <h1>Secure exams, <em>clear rules</em> and reliable results.</h1>
       <p class="lede">Regis Marie College's Quiz &amp; Examination app gives teachers a controlled way to schedule and manage exams, students a focused Android exam screen, and staff a clear record of submissions, results, and security events.</p>
       <div class="cta-row">
-        <a href="#contact" class="btn btn-primary">
+        <a href="downloads/rmc-quiz-exam.apk" class="btn btn-primary" download="rmc-quiz-exam.apk">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l18 9-18 9V3z"/></svg>
-          Request Android access
+          Download Android app
         </a>
         <a href="#how" class="btn btn-ghost">See how it works</a>
+      </div>
+      <div class="download-panel" id="download">
+        <div class="download-copy">
+          <span class="download-kicker">READY TO SHARE</span>
+          <h2>Get the current RMC Quiz &amp; Examination app.</h2>
+          <p>Download the Android APK directly or scan the code with a phone. After installation, each student, teacher, or administrator signs in with their own account.</p>
+          <a href="downloads/rmc-quiz-exam.apk" class="download-link" download="rmc-quiz-exam.apk">Download APK <span aria-hidden="true">↓</span></a>
+        </div>
+        <a class="download-qr" href="downloads/rmc-quiz-exam.apk" aria-label="Open the Android APK download">
+          <img src="assets/img/rmc-app-download-qr.png" alt="QR code to download the RMC Quiz and Examination Android app">
+        </a>
       </div>
       <div class="trust-row">
         <div class="trust-stat"><b>3</b><span>roles — student, teacher, admin</span></div>
@@ -801,7 +843,7 @@
     <h2>A clearer way to run mobile exams.</h2>
     <p>For enrolled students, teachers, and administrators, the Android app connects scheduled exams with saved answers, server-side grading, reports, and reviewable security events.</p>
     <div class="cta-row">
-      <a href="#contact" class="btn btn-primary">Request Android access</a>
+      <a href="downloads/rmc-quiz-exam.apk" class="btn btn-primary" download="rmc-quiz-exam.apk">Download the Android app</a>
       <a href="mailto:escivalladolid@gmail.com" class="btn btn-ghost">Contact the developers</a>
     </div>
   </div>
