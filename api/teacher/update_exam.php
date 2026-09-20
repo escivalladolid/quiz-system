@@ -119,6 +119,7 @@ try {
                 $duration = (int) ($input['duration_minutes'] ?? 60);
                 $startTime = normalizeExamDateTime($input['start_time'] ?? null, 'Availability start time');
                 $endTime = normalizeExamDateTime($input['end_time'] ?? null, 'Availability end time');
+                validateExamAvailabilityInput($startTime, $endTime);
                 $startTime = $startTime ?? $pdo->query('SELECT NOW()')->fetchColumn();
                 validateExamAvailability($startTime, $endTime);
                 $updates[] = 'start_time=?';
@@ -127,13 +128,24 @@ try {
                 $params[] = $endTime;
             }
         } else {
+            if (array_key_exists('start_time', $input) xor array_key_exists('end_time', $input)) {
+                throw new InvalidArgumentException(
+                    'Availability start and end date/time must both be provided, or both left blank.'
+                );
+            }
             $normalizedStartForUpdate = array_key_exists('start_time', $input)
                 ? normalizeExamDateTime($input['start_time'], 'Availability start time')
                 : normalizeExamDateTime($examRow['start_time'] ?? null, 'Availability start time');
             $normalizedEndForUpdate = array_key_exists('end_time', $input)
                 ? normalizeExamDateTime($input['end_time'], 'Availability end time')
                 : normalizeExamDateTime($examRow['end_time'] ?? null, 'Availability end time');
-            validateExamAvailability($normalizedStartForUpdate, $normalizedEndForUpdate);
+            if (array_key_exists('start_time', $input) || array_key_exists('end_time', $input)) {
+                validateExamAvailabilityInput($normalizedStartForUpdate, $normalizedEndForUpdate);
+            } else {
+                // Preserve legacy open-ended exams when the caller is not
+                // changing the availability fields at all.
+                validateExamAvailability($normalizedStartForUpdate, $normalizedEndForUpdate);
+            }
             if (array_key_exists('start_time', $input)) {
                 $updates[] = 'start_time=?';
                 $params[] = $normalizedStartForUpdate;

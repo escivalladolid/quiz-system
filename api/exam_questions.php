@@ -131,6 +131,18 @@ $examStatus = strtoupper((string)$exam['status']);
 if ($isArchived && !$existing) {
     sendError('This exam has been archived and is no longer available.', 'EXAM_ARCHIVED', 403);
 }
+// A stale LIVE status must not bypass the configured availability window for a
+// brand-new attempt. Existing attempts remain readable so the client can
+// recover and submit after the window closes.
+if (!$existing && !$attempt) {
+    $nowTimestamp = time();
+    if (!empty($exam['start_time']) && strtotime($exam['start_time']) > $nowTimestamp) {
+        sendError('This exam is not open yet.', 'EXAM_NOT_OPEN', 403);
+    }
+    if (!empty($exam['end_time']) && strtotime($exam['end_time']) <= $nowTimestamp) {
+        sendError('This exam is closed.', 'EXAM_CLOSED', 403);
+    }
+}
 if ($examStatus !== 'LIVE' && !$existing && !$attempt) {
     sendError('This exam is not available for taking right now.', 'EXAM_NOT_OPEN', 403);
 }

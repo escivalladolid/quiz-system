@@ -60,6 +60,17 @@ if ((int) ($exam['is_archived'] ?? 0) === 1 || (int) ($exam['class_is_archived']
     sendError('This exam has been archived and is no longer available.', 'EXAM_ARCHIVED', 403);
 }
 
+// Keep the availability window authoritative even if a status transition is
+// briefly stale (the status sync is intentionally throttled). This prevents a
+// new attempt from starting before the scheduled opening or after the close.
+$nowTimestamp = time();
+if (!empty($exam['start_time']) && strtotime($exam['start_time']) > $nowTimestamp) {
+    sendError('This exam is not open yet.', 'EXAM_NOT_OPEN', 403);
+}
+if (!empty($exam['end_time']) && strtotime($exam['end_time']) <= $nowTimestamp) {
+    sendError('This exam is closed.', 'EXAM_CLOSED', 403);
+}
+
 // Students may start only LIVE exams.
 $examStatus = strtoupper((string)$exam['status']);
 if ($examStatus !== 'LIVE') {

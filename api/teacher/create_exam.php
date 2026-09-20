@@ -51,7 +51,7 @@ try {
 
     $startTime = normalizeExamDateTime($input['start_time'] ?? null, 'Availability start time');
     $endTime = normalizeExamDateTime($input['end_time'] ?? null, 'Availability end time');
-    validateExamAvailability($startTime, $endTime);
+    validateExamAvailabilityInput($startTime, $endTime);
 
     if ($status === 'SCHEDULED') {
         if ($startTime === null || $startTime === '') {

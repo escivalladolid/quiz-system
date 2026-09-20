@@ -78,6 +78,21 @@ function validateExamAvailability(?string $startTime, ?string $endTime): void {
     }
 }
 
+/**
+ * Validate a window supplied by a client. An empty pair means "no schedule";
+ * a partially supplied pair is never accepted. The regular availability check
+ * remains separate because legacy open-ended exams may still have a start with
+ * no end after the server fills an omitted schedule with NOW().
+ */
+function validateExamAvailabilityInput(?string $startTime, ?string $endTime): void {
+    if (($startTime === null) xor ($endTime === null)) {
+        throw new InvalidArgumentException(
+            'Availability start and end date/time must both be provided, or both left blank.'
+        );
+    }
+    validateExamAvailability($startTime, $endTime);
+}
+
 function validateExamDuration($value): int {
     if (!is_scalar($value) || filter_var($value, FILTER_VALIDATE_INT) === false) {
         throw new InvalidArgumentException('Exam duration must be a whole number of minutes.');
