@@ -49,15 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'token'   => $apiData['session_token'] ?? '',
             ];
 
-            // "Remember this device" — persist the DB-backed API session token
-            // in a long-lived cookie. The token lives in the Postgres
-            // `sessions` table so it survives dyno restarts (which wipe the
-            // file-backed $_SESSION) and the user stops being forced to log
-            // back in on every Render restart / browser close. Cleared on
-            // explicit logout via logout.php.
-            if (!empty($_POST['remember'])) {
-                admin_set_remember_cookie((string) ($_SESSION['admin_user']['token'] ?? ''));
-            }
+            // Keep login through server restarts; persist beyond browser close only if requested.
+            admin_set_remember_cookie((string) $_SESSION['admin_user']['token'], !empty($_POST['remember']));
 
             header('Location: ' . admin_url('dashboard'));
             exit;

@@ -237,7 +237,7 @@ function admin_restore_remember(): void {
     if (!admin_api_response_ok($res)) {
         // Token was revoked/expired — drop the stale cookie instead of
         // hammering the API on every request.
-        admin_clear_remember_cookie();
+        if (in_array($res['http_code'], [401, 403], true)) admin_clear_remember_cookie();
         return;
     }
 
@@ -251,12 +251,12 @@ function admin_restore_remember(): void {
     ];
 }
 
-/** Write the "remember this device" cookie (30-day, device-scoped token). */
-function admin_set_remember_cookie(string $token): void {
+/** Secure recovery cookie: browser session by default, seven days when remembered. */
+function admin_set_remember_cookie(string $token, bool $persistent = false): void {
     $fwdProto = strtolower(trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0] ?? ''));
     $secure   = $fwdProto === 'https' || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
     setcookie('rmc_admin_remember', $token, [
-        'expires'  => time() + 30 * 24 * 3600,
+        'expires'  => $persistent ? time() + 7 * 24 * 3600 : 0,
         'path'     => '/',
         'secure'   => $secure,
         'httponly' => true,
