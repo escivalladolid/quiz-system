@@ -68,6 +68,37 @@ try {
         sendError($invalidCredsMessage, 'INVALID_CREDENTIALS', 401);
     }
 
+    /*
+     * Keep one active mobile/web session per account. The user row lock makes
+     * the check and insert atomic even when two devices submit credentials at
+     * the same time. Expired rows are harmless and are removed first so an
+     * old session cannot block a new login.
+     */
+    $pdo->beginTransaction();
+    $userLockStmt = $pdo->prepare('SELECT user_id FROM users WHERE user_id = ? FOR UPDATE');
+    $userLockStmt->execute([(int) $user['user_id']]);
+
+    $cleanupStmt = $pdo->prepare('DELETE FROM sessions WHERE user_id = ? AND expires_at <= NOW()');
+    $cleanupStmt->execute([(int) $user['user_id']]);
+
+    $activeSessionStmt = $pdo->prepare(
+        'SELECT session_id, created_at, expires_at
+         FROM sessions
+         WHERE user_id = ? AND expires_at > NOW()
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE'
+    );
+    $activeSessionStmt->execute([(int) $user['user_id']]);
+    if ($activeSessionStmt->fetch()) {
+        $pdo->rollBack();
+        sendError(
+            'This account is already logged in on another device. Log out there first or ask an administrator to end the active session.',
+            'ACTIVE_SESSION',
+            409
+        );
+    }
+
     $sessionToken = bin2hex(random_bytes(32));
     $expiresAt = date('Y-m-d H:i:s', strtotime('+7 days'));
 
@@ -88,6 +119,7 @@ try {
         'action' => 'LOGIN',
         'details' => 'Logged in as ' . $user['role_name'] . '.',
     ]);
+    $pdo->commit();
 
     sendSuccess([
         'user_id' => (int)$user['user_id'],
@@ -101,5 +133,8 @@ try {
     ]);
 
 } catch (PDOException $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     sendError('Something went wrong while logging in.', 'SERVER_ERROR', 500);
 }
