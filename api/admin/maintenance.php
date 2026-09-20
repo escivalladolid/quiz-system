@@ -33,8 +33,11 @@ try {
         }
     }
 
-    $sessions = $pdo->query(
-        "SELECT s.session_id, s.expires_at, s.created_at,
+    $headers = getallheaders();
+    preg_match('/Bearer\s+(.+)/', $headers['Authorization'] ?? $headers['authorization'] ?? '', $match);
+    $ownToken = $match[1] ?? '';
+    $sessionsStmt = $pdo->prepare(
+        "SELECT s.session_id, s.expires_at, s.created_at, (s.token = ?) AS is_current_session,
                 u.user_id, u.first_name, u.last_name, u.username, r.role_name
          FROM sessions s
          JOIN users u ON u.user_id = s.user_id
@@ -42,7 +45,9 @@ try {
          WHERE s.expires_at > NOW()
          ORDER BY s.created_at DESC
          LIMIT 100"
-    )->fetchAll(PDO::FETCH_ASSOC);
+    );
+    $sessionsStmt->execute([$ownToken]);
+    $sessions = $sessionsStmt->fetchAll(PDO::FETCH_ASSOC);
 
     sendSuccess([
         'db_now' => $dbNow,

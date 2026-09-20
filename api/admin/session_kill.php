@@ -34,6 +34,7 @@ if (empty($sessionIds) && empty($userIds)) {
 }
 
 try {
+    $pdo->beginTransaction();
     $deleted = 0;
     $killedUsers = [];
 
@@ -67,8 +68,10 @@ try {
             . " ($deleted row(s))"),
     ]);
 
+    $pdo->commit();
     sendSuccess(['deleted' => $deleted]);
 } catch (PDOException $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
     error_log('QuizSystem DB Error: ' . $e->getMessage());
     sendError('An unexpected error occurred. Please try again.', 'DB_ERROR', 500);
 }

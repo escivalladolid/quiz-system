@@ -1956,7 +1956,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
                   <thead><tr><th>User</th><th>Role</th><th>Expires</th><th></th></tr></thead>
                   <tbody>
                     <?php foreach ($maintSessions as $s): ?>
-                      <?php $own = $token === ($s['session_id'] ?? ''); ?>
+                      <?php $own = !empty($s['is_current_session']); ?>
                       <tr>
                         <td>
                           <div><strong style="font-weight:600;"><?php echo e(trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''))); ?></strong> <?php if ($own): ?><span class="tag tag-amber" style="padding:0 5px;font-size:9px;vertical-align:middle;">YOU</span><?php endif; ?></div>
@@ -1964,7 +1964,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
                         </td>
                         <td><span class="tag tag-navy"><?php echo e($s['role_name'] ?? ''); ?></span></td>
                         <td class="mono" style="font-size:12px;color:var(--ink-soft);"><?php echo e(rmc_remain((string) ($s['expires_at'] ?? 'now'))); ?></td>
-                        <td><?php if (!$own): ?><button class="btn-filter" type="button" data-kill="<?php echo e($s['session_id'] ?? ''); ?>" data-user="<?php echo e(trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''))); ?>">End</button><?php endif; ?></td>
+                        <td><?php if (!$own): ?><button class="btn-filter" type="button" data-kill="<?php echo e($s['session_id'] ?? ''); ?>" data-user="<?php echo e(trim(($s['first_name'] ?? '') . ' ' . ($s['last_name'] ?? ''))); ?>">Log out this session</button><button class="btn-filter" type="button" data-kill-account="<?php echo (int) $s['user_id']; ?>" data-user="<?php echo e($s['username'] ?? ''); ?>">Log out all devices</button><?php endif; ?></td>
                       </tr>
                     <?php endforeach; ?>
                     <?php if (empty($maintSessions)): ?>
@@ -1973,10 +1973,9 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
                   </tbody>
                 </table>
               </div>
-              <div class="filter-bar" style="margin:12px 14px 14px;" data-kill-user-form>
+              <form class="filter-bar" style="margin:12px 14px 14px;" data-kill-user-form>
                 <input class="input" type="text" name="user_ids" placeholder="End all sessions for user id(s) — e.g. 3 7 12" style="flex:1;min-width:140px;">
-                <button class="btn-filter" type="submit">End sessions</button>
-              </div>
+                <button class="btn-filter" type="submit">Log out all devices</button></form>
             </div>
           </aside>
         </div>
@@ -2239,7 +2238,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
 <div class="modal-backdrop" id="modal-kill">
   <div class="modal" style="max-width:420px;width:100%;">
     <h3>End session</h3>
-    <p style="color:var(--ink-soft);font-size:13.5px;margin:10px 0 16px;">Sign out <b id="killName" style="color:var(--ink);"></b>. This revokes their API token immediately — the user will be returned to the login screen on their next action.</p>
+    <p style="color:var(--ink-soft);font-size:13.5px;margin:10px 0 16px;">Sign out <b id="killName" style="color:var(--ink);"></b>. Access is revoked immediately. The device will need to sign in again on its next server request. Use this for a lost phone, a stuck login, or suspected unauthorized access. Passwords and saved records are unchanged. Your current admin session is kept.</p>
     <div class="modal-actions">
       <button class="btn btn-ghost" type="button" data-close-m="modal-kill">Cancel</button>
       <button class="btn btn-amber" type="button" id="killConfirm" style="background:var(--danger);color:#fff;">End session</button>
@@ -3113,15 +3112,22 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
       openMd('modal-kill');
     });
   });
+  document.querySelectorAll('[data-kill-account]').forEach(function(b){
+    b.addEventListener('click', function(){
+      lastKill = { user_id: Number(b.getAttribute('data-kill-account')) };
+      document.getElementById('killName').textContent = (b.getAttribute('data-user') || '') + ' on all devices';
+      openMd('modal-kill');
+    });
+  });
   var killForm = document.querySelector('#view-maintenance [data-kill-user-form]');
   if (killForm) killForm.addEventListener('submit', function(e){
     e.preventDefault();
     var raw = [];
-    (killForm.user_ids.value.split(/[,\s]+/)).forEach(function(s){
+    (killForm.elements.user_ids.value.split(/[,\s]+/)).forEach(function(s){
       var n = parseInt(s, 10);
       if (Number.isFinite(n) && n > 0) raw.push(n);
     });
-    if (!raw.length) { killForm.user_ids.focus(); return; }
+    if (!raw.length) { killForm.elements.user_ids.focus(); return; }
     lastKill = { user_ids: raw, user: 'user id(s) ' + raw.join(', ') };
     document.getElementById('killName').textContent = lastKill.user;
     openMd('modal-kill');

@@ -75,8 +75,15 @@ try {
      * old session cannot block a new login.
      */
     $pdo->beginTransaction();
-    $userLockStmt = $pdo->prepare('SELECT user_id FROM users WHERE user_id = ? FOR UPDATE');
+    $userLockStmt = $pdo->prepare('SELECT user_id, password_hash, status FROM users WHERE user_id = ? FOR UPDATE');
     $userLockStmt->execute([(int) $user['user_id']]);
+    // Recheck after acquiring the same lock used by password changes.
+    $lockedUser = $userLockStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$lockedUser || $lockedUser['status'] !== 'ACTIVE'
+            || !password_verify($password, $lockedUser['password_hash'])) {
+        $pdo->rollBack();
+        sendError($invalidCredsMessage, 'INVALID_CREDENTIALS', 401);
+    }
 
     $cleanupStmt = $pdo->prepare('DELETE FROM sessions WHERE user_id = ? AND expires_at <= NOW()');
     $cleanupStmt->execute([(int) $user['user_id']]);
