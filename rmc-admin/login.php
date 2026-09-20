@@ -1,5 +1,11 @@
 <?php
 require_once __DIR__ . '/inc/bootstrap.php';
+// Same-origin preflight refreshes stale forms without submitting credentials.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['prepare_login'] ?? '') === '1') {
+    header('Content-Type: application/json');
+    echo json_encode(['csrf_token' => admin_csrf_token(), 'signed_in' => admin_logged_in()]);
+    exit;
+}
 
 // Already signed in? Bounce straight to the dashboard instead of rendering
 // the login form again (mirror of dashboard.php's admin_require_login(), inverted).
@@ -203,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="error" id="errorBox"<?php if ($error === null) echo ' style="display:none;"'; ?>><?php echo e($error ?? 'Incorrect username or password. Please try again.'); ?></div>
 
-    <form method="post" action="<?= e(admin_url('login')) ?>" novalidate>
+    <form id="adminLoginForm" method="post" action="<?= e(admin_url('login')) ?>" novalidate>
       <input type="hidden" name="csrf_token" value="<?php echo e(admin_csrf_token()); ?>">
       <div class="field">
         <label for="username">Username</label>
@@ -247,6 +253,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
 (function () {
+  var loginForm = document.getElementById('adminLoginForm');
+  var loginBusy = false;
+  loginForm.addEventListener('submit', async function(event) {
+    event.preventDefault();
+    if (loginBusy || !loginForm.reportValidity()) return;
+    loginBusy = true;
+    var button = loginForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    button.textContent = 'Signing in…';
+    try {
+      var url = new URL(loginForm.action, window.location.href);
+      url.searchParams.set('prepare_login', '1');
+      var response = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) throw new Error('Could not prepare login');
+      var state = await response.json();
+      if (state.signed_in) { window.location.assign('dashboard'); return; }
+      if (!state.csrf_token) throw new Error('Missing security token');
+      loginForm.elements.csrf_token.value = state.csrf_token;
+      HTMLFormElement.prototype.submit.call(loginForm);
+    } catch (error) {
+      var message = document.getElementById('errorBox');
+      message.textContent = 'Could not connect securely. Check your connection and try again.';
+      message.style.display = 'block';
+      loginBusy = false;
+      button.disabled = false;
+      button.textContent = 'Sign in to admin panel';
+    }
+  });
   var modal = document.getElementById('modalForgot');
   var btnForgot = document.getElementById('btnForgot');
   var btnClose = document.getElementById('btnFpClose');
@@ -300,9 +334,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
       })
       .catch(function () {
+  var loginForm = document.getElementById('adminLoginForm');
+  var loginBusy = false;
+  loginForm.addEventListener('submit', async function(event) {
+    event.preventDefault();
+    if (loginBusy || !loginForm.reportValidity()) return;
+    loginBusy = true;
+    var button = loginForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    button.textContent = 'Signing in…';
+    try {
+      var url = new URL(loginForm.action, window.location.href);
+      url.searchParams.set('prepare_login', '1');
+      var response = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) throw new Error('Could not prepare login');
+      var state = await response.json();
+      if (state.signed_in) { window.location.assign('dashboard'); return; }
+      if (!state.csrf_token) throw new Error('Missing security token');
+      loginForm.elements.csrf_token.value = state.csrf_token;
+      HTMLFormElement.prototype.submit.call(loginForm);
+    } catch (error) {
+      var message = document.getElementById('errorBox');
+      message.textContent = 'Could not connect securely. Check your connection and try again.';
+      message.style.display = 'block';
+      loginBusy = false;
+      button.disabled = false;
+      button.textContent = 'Sign in to admin panel';
+    }
+  });
         showInfo('alert-error', 'Unable to reach the server. Please try again.');
       })
       .finally(function () {
+  var loginForm = document.getElementById('adminLoginForm');
+  var loginBusy = false;
+  loginForm.addEventListener('submit', async function(event) {
+    event.preventDefault();
+    if (loginBusy || !loginForm.reportValidity()) return;
+    loginBusy = true;
+    var button = loginForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    button.textContent = 'Signing in…';
+    try {
+      var url = new URL(loginForm.action, window.location.href);
+      url.searchParams.set('prepare_login', '1');
+      var response = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) throw new Error('Could not prepare login');
+      var state = await response.json();
+      if (state.signed_in) { window.location.assign('dashboard'); return; }
+      if (!state.csrf_token) throw new Error('Missing security token');
+      loginForm.elements.csrf_token.value = state.csrf_token;
+      HTMLFormElement.prototype.submit.call(loginForm);
+    } catch (error) {
+      var message = document.getElementById('errorBox');
+      message.textContent = 'Could not connect securely. Check your connection and try again.';
+      message.style.display = 'block';
+      loginBusy = false;
+      button.disabled = false;
+      button.textContent = 'Sign in to admin panel';
+    }
+  });
         btnSend.disabled = false;
         btnSend.textContent = 'Send Reset Code';
       });
