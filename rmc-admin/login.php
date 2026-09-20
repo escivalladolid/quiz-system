@@ -334,65 +334,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
       })
       .catch(function () {
-  var loginForm = document.getElementById('adminLoginForm');
-  var loginBusy = false;
-  loginForm.addEventListener('submit', async function(event) {
-    event.preventDefault();
-    if (loginBusy || !loginForm.reportValidity()) return;
-    loginBusy = true;
-    var button = loginForm.querySelector('button[type="submit"]');
-    button.disabled = true;
-    button.textContent = 'Signing in…';
-    try {
-      var url = new URL(loginForm.action, window.location.href);
-      url.searchParams.set('prepare_login', '1');
-      var response = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
-      if (!response.ok) throw new Error('Could not prepare login');
-      var state = await response.json();
-      if (state.signed_in) { window.location.assign('dashboard'); return; }
-      if (!state.csrf_token) throw new Error('Missing security token');
-      loginForm.elements.csrf_token.value = state.csrf_token;
-      HTMLFormElement.prototype.submit.call(loginForm);
-    } catch (error) {
-      var message = document.getElementById('errorBox');
-      message.textContent = 'Could not connect securely. Check your connection and try again.';
-      message.style.display = 'block';
-      loginBusy = false;
-      button.disabled = false;
-      button.textContent = 'Sign in to admin panel';
-    }
-  });
         showInfo('alert-error', 'Unable to reach the server. Please try again.');
       })
       .finally(function () {
-  var loginForm = document.getElementById('adminLoginForm');
-  var loginBusy = false;
-  loginForm.addEventListener('submit', async function(event) {
-    event.preventDefault();
-    if (loginBusy || !loginForm.reportValidity()) return;
-    loginBusy = true;
-    var button = loginForm.querySelector('button[type="submit"]');
-    button.disabled = true;
-    button.textContent = 'Signing in…';
-    try {
-      var url = new URL(loginForm.action, window.location.href);
-      url.searchParams.set('prepare_login', '1');
-      var response = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
-      if (!response.ok) throw new Error('Could not prepare login');
-      var state = await response.json();
-      if (state.signed_in) { window.location.assign('dashboard'); return; }
-      if (!state.csrf_token) throw new Error('Missing security token');
-      loginForm.elements.csrf_token.value = state.csrf_token;
-      HTMLFormElement.prototype.submit.call(loginForm);
-    } catch (error) {
-      var message = document.getElementById('errorBox');
-      message.textContent = 'Could not connect securely. Check your connection and try again.';
-      message.style.display = 'block';
-      loginBusy = false;
-      button.disabled = false;
-      button.textContent = 'Sign in to admin panel';
-    }
-  });
         btnSend.disabled = false;
         btnSend.textContent = 'Send Reset Code';
       });
