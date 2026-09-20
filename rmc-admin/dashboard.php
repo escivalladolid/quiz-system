@@ -794,17 +794,6 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
 
 <div class="shell">
 
-  <?php if (!empty($_SESSION['flash'])): ?>
-  <div style="padding:18px 18px 0;">
-    <?php admin_flash_display(); ?>
-  </div>
-  <?php endif; ?>
-  <?php if (!empty($dashboard_failures)): ?>
-  <div class="dashboard-alert" role="status">
-    Some dashboard sections could not load: <?php echo e(implode(', ', $dashboard_failures)); ?>. Please refresh and check the backend connection.
-  </div>
-  <?php endif; ?>
-
   <!-- ================= SIDEBAR ================= -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
@@ -868,6 +857,18 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
 
   <!-- ================= MAIN ================= -->
   <div class="main">
+  <?php if (!empty($_SESSION['flash'])): ?>
+  <div style="padding:18px 18px 0;">
+    <?php admin_flash_display(); ?>
+  </div>
+  <?php endif; ?>
+  <?php if (!empty($dashboard_failures)): ?>
+  <div class="dashboard-alert" role="status">
+    Some dashboard sections could not load: <?php echo e(implode(', ', $dashboard_failures)); ?>. Please refresh and check the backend connection.
+  </div>
+  <?php endif; ?>
+
+
 
     <!-- ============ DASHBOARD VIEW ============ -->
     <div class="view active" id="view-dashboard">
