@@ -2448,7 +2448,15 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': RMC_ADMIN.csrf },
       body: JSON.stringify(payload)
-    }).then(function(r){ return r.json(); });
+    }).then(function(r){ return r.json(); }).then(function(res){
+      if (res.code === 'UNAUTHORIZED' || res.code === 'SESSION_EXPIRED') {
+        alert('Your admin session expired. Sign in again and retry. No logout was confirmed.');
+        window.location.assign('login');
+        return new Promise(function(){});
+      }
+      if (res.code === 'CSRF_EXPIRED') { alert('This page expired. Refreshing; please retry afterward.'); window.location.reload(); return new Promise(function(){}); }
+      return res;
+    });
   }
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch){

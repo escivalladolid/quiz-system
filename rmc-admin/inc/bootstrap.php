@@ -308,7 +308,7 @@ function admin_verify_csrf(?string $token): void {
     if (!$token || !is_string($expected) || !hash_equals($expected, $token)) {
         http_response_code(403);
         header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'error' => 'Invalid security token. Please try again.', 'code' => 'FORBIDDEN']);
+        echo json_encode(['success' => false, 'error' => 'Invalid security token. Please try again.', 'code' => 'CSRF_EXPIRED']);
         exit;
     }
 }
