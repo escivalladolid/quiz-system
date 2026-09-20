@@ -69,7 +69,7 @@ try {
     }
 
     /*
-     * Keep one active mobile/web session per account. The user row lock makes
+     * Keep one active session for students and teachers; admins may use multiple devices. The user row lock makes
      * the check and insert atomic even when two devices submit credentials at
      * the same time. Expired rows are harmless and are removed first so an
      * old session cannot block a new login.
@@ -97,7 +97,7 @@ try {
          FOR UPDATE'
     );
     $activeSessionStmt->execute([(int) $user['user_id']]);
-    if ($activeSessionStmt->fetch()) {
+    if ($activeSessionStmt->fetch() && $user['role_name'] !== 'ADMIN') {
         $pdo->rollBack();
         sendError(
             'This account is already logged in on another device. Log out there first or ask an administrator to end the active session.',
