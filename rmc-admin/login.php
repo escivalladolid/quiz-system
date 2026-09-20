@@ -12,12 +12,18 @@ $error = null;
 $username = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    admin_verify_csrf($_POST['csrf_token'] ?? null);
+    $submittedToken = $_POST['csrf_token'] ?? null;
+    $expectedToken = $_SESSION['csrf_token'] ?? '';
+    $validToken = is_string($submittedToken) && is_string($expectedToken)
+        && $expectedToken !== '' && hash_equals($expectedToken, $submittedToken);
 
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    if ($username === '' || $password === '') {
+    if (!$validToken) {
+        http_response_code(403);
+        $error = 'This login page expired, possibly after a server update. Please enter your password and sign in again.';
+    } elseif ($username === '' || $password === '') {
         $error = 'Please enter both your username and password.';
     } else {
         $res = admin_api_request('POST', 'login.php', [
