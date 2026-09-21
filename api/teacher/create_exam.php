@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_grading.php';
 require_once __DIR__ . '/../../helpers/exam_builder.php';
 require_once __DIR__ . '/../../helpers/exam_status.php';
+require_once __DIR__ . '/../../helpers/notifications.php';
 
 header('Content-Type: application/json');
 
@@ -110,6 +111,23 @@ try {
     }
 
     $pdo->commit();
+
+    // A published exam creates one idempotent class event. Notification
+    // persistence is intentionally best-effort after the exam transaction has
+    // succeeded, so a missing/unapplied notification migration cannot undo a
+    // valid exam publish.
+    if ($status !== 'DRAFT') {
+        try {
+            createExamPublishedNotification(
+                $pdo,
+                (int) $input['class_id'],
+                (int) $exam_id,
+                (string) $input['exam_name']
+            );
+        } catch (Throwable $notificationError) {
+            error_log('Exam published notification could not be created: ' . $notificationError->getMessage());
+        }
+    }
 
     $confirmedStmt = $pdo->prepare('SELECT max_exit_attempts FROM exams WHERE exam_id = ?');
     $confirmedStmt->execute([$exam_id]);

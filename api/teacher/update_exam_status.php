@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_status.php';
+require_once __DIR__ . '/../../helpers/notifications.php';
 
 header('Content-Type: application/json');
 
@@ -87,6 +88,19 @@ try {
     $final = $pdo->prepare("SELECT status, is_closed, closed_at FROM exams WHERE exam_id=?");
     $final->execute([$exam_id]);
     $row = $final->fetch(PDO::FETCH_ASSOC);
+
+    if ($current === 'DRAFT' && in_array($new_status, ['SCHEDULED', 'LIVE'], true)) {
+        try {
+            createExamPublishedNotification(
+                $pdo,
+                (int) $exam['class_id'],
+                (int) $exam_id,
+                (string) ($exam['exam_name'] ?? '')
+            );
+        } catch (Throwable $notificationError) {
+            error_log('Exam published notification could not be created: ' . $notificationError->getMessage());
+        }
+    }
 
     sendSuccess([
         'message' => 'Exam status updated successfully.',

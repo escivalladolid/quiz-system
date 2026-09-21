@@ -16,3 +16,4 @@ Thumbs.db
 database/quiz_system.sql
 database/*.sql
 !database/migration_attempt_scoped_proctoring.sql
+!database/migration_notifications.sql

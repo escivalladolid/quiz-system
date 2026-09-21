@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/exam_grading.php';
 require_once __DIR__ . '/../../helpers/exam_builder.php';
 require_once __DIR__ . '/../../helpers/exam_status.php';
+require_once __DIR__ . '/../../helpers/notifications.php';
 
 header('Content-Type: application/json');
 
@@ -25,12 +26,13 @@ if (!$input || !isset($input['exam_id'])) {
 $exam_id = $input['exam_id'];
 
 try {
-    $stmt = $pdo->prepare("SELECT e.exam_id, e.start_time, e.end_time, e.max_exit_attempts FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.exam_id=? AND c.teacher_id=?");
+    $stmt = $pdo->prepare("SELECT e.exam_id, e.class_id, e.exam_name, e.status, e.start_time, e.end_time, e.max_exit_attempts FROM exams e JOIN classes c ON e.class_id=c.class_id WHERE e.exam_id=? AND c.teacher_id=?");
     $stmt->execute([$exam_id, $teacher_id]);
     $examRow = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$examRow) {
         sendError('Exam not found or not authorized.', 'NOT_FOUND', 404);
     }
+    $previousStatus = strtoupper((string) ($examRow['status'] ?? 'DRAFT'));
 
     $stmt2 = $pdo->prepare("SELECT COUNT(*) AS cnt FROM exam_submissions WHERE exam_id=?");
     $stmt2->execute([$exam_id]);
@@ -196,6 +198,21 @@ try {
         $stmt = $pdo->prepare("UPDATE exams SET " . implode(', ', $updates) . " WHERE exam_id=?");
         $stmt->execute($params);
         $pdo->commit();
+
+        $publishedStatus = strtoupper((string) ($input['status'] ?? $previousStatus));
+        if ($previousStatus === 'DRAFT' && in_array($publishedStatus, ['SCHEDULED', 'LIVE'], true)) {
+            try {
+                createExamPublishedNotification(
+                    $pdo,
+                    (int) $examRow['class_id'],
+                    (int) $exam_id,
+                    (string) ($input['exam_name'] ?? $examRow['exam_name'] ?? '')
+                );
+            } catch (Throwable $notificationError) {
+                error_log('Exam published notification could not be created: ' . $notificationError->getMessage());
+            }
+        }
+
         $confirmedStmt = $pdo->prepare('SELECT max_exit_attempts FROM exams WHERE exam_id = ?');
         $confirmedStmt->execute([$exam_id]);
         $confirmedMaxExitAttempts = $confirmedStmt->fetchColumn();
