@@ -141,7 +141,7 @@ require_once __DIR__ . '/inc/header.php';
     </div>
     <div class="soft-tip">
       <h4>Scoring</h4>
-      <p>Percentages are derived from raw earned points: <span class="mono">score / SUM(points) &times; 100</span>. Pass/fail compares that percentage to the exam&rsquo;s passing threshold. Items are all-or-nothing &mdash; no partial credit.</p>
+      <p>Raw percentages are informational: <span class="mono">score / SUM(points) &times; 100</span>. Pass/fail uses the Base-50 grade <span class="mono">(score / SUM(points) &times; 50) + 50</span> against the exam&rsquo;s passing threshold. Items are all-or-nothing &mdash; no partial credit.</p>
     </div>
     <div class="soft-tip">
       <h4>Backups &amp; deploy</h4>

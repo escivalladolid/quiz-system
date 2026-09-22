@@ -106,10 +106,11 @@ if ($examId > 0) {
     $correctCount  = (int) $result['correct_count'];
     $totalQuestions = (int) $result['total_questions'];
     $percentage    = $totalPoints > 0 ? round(($earnedPoints / $totalPoints) * 100, 2) : 0.0;
-
-    $passed = $result['passing_score'] !== null
-        ? ($percentage >= (float) $result['passing_score'])
-        : null;
+    $base50Grade   = calculateBase50Grade($earnedPoints, $totalPoints);
+    $passed        = passesBase50Grade(
+        $base50Grade,
+        $result['passing_score'] !== null ? (float) $result['passing_score'] : null
+    );
 
     $payload = [
         'submission_id'     => (int) $result['submission_id'],
@@ -125,6 +126,8 @@ if ($examId > 0) {
         'correct_count'     => $scoresVisible ? $correctCount : null,
         'total_questions'   => $totalQuestions,
         'percentage'        => $scoresVisible ? $percentage : null,
+        'raw_percentage'    => $scoresVisible ? $percentage : null,
+        'base50_grade'      => $scoresVisible ? $base50Grade : null,
         'passed'            => $scoresVisible ? $passed : null,
         'time_used_secs'    => $result['time_used_secs'] !== null ? (int) $result['time_used_secs'] : null,
         'submitted_at'      => $result['submitted_at'],
@@ -167,6 +170,7 @@ foreach ($results as $r) {
     $earned = (int) $r['score'];
     $total  = (int) ($totalPointsByExam[(int) $r['exam_id']] ?? 0);
     $pct    = $total > 0 ? round(($earned / $total) * 100, 2) : 0.0;
+    $base50 = calculateBase50Grade($earned, $total);
     $payload[] = [
         'submission_id'    => (int) $r['submission_id'],
         'exam_id'          => (int) $r['exam_id'],
@@ -176,9 +180,13 @@ foreach ($results as $r) {
         'correct_count'    => $scoresVisible ? (int) $r['correct_count'] : null,
         'total_questions'  => (int) $r['total_questions'],
         'percentage'       => $scoresVisible ? $pct : null,
+        'raw_percentage'   => $scoresVisible ? $pct : null,
+        'base50_grade'     => $scoresVisible ? $base50 : null,
         'passing_score'    => $r['passing_score'] !== null ? (float) $r['passing_score'] : null,
-        'passed'           => $scoresVisible && $r['passing_score'] !== null
-            ? $pct >= (float) $r['passing_score'] : null,
+        'passed'           => $scoresVisible ? passesBase50Grade(
+            $base50,
+            $r['passing_score'] !== null ? (float) $r['passing_score'] : null
+        ) : null,
         'time_used_secs'   => $r['time_used_secs'] !== null ? (int) $r['time_used_secs'] : null,
         'submitted_at'     => $r['submitted_at'],
         'exam_name'        => $r['exam_name'],

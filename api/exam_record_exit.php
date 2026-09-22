@@ -181,6 +181,7 @@ try {
                 $totalPoints = (int) ($grade['total_points'] ?? 0);
                 $percentage = $totalPoints > 0
                     ? round(($earned / $totalPoints) * 100, 2) : 0.0;
+                $base50Grade = calculateBase50Grade($earned, $totalPoints);
                 $passingScore = $exam['passing_score'] !== null
                     ? (float) $exam['passing_score'] : null;
                 $scoresVisible = ((int) ($exam['is_closed'] ?? 0) === 1)
@@ -195,9 +196,11 @@ try {
                     'total_questions' => (int) $receipt['total_questions'],
                     'question_count' => (int) $receipt['total_questions'],
                     'percentage' => $scoresVisible ? $percentage : null,
+                    'raw_percentage' => $scoresVisible ? $percentage : null,
+                    'base50_grade' => $scoresVisible ? $base50Grade : null,
                     'passing_score' => $passingScore,
-                    'passed' => $scoresVisible && $passingScore !== null
-                        ? $percentage >= $passingScore : false,
+                    'passed' => $scoresVisible
+                        ? passesBase50Grade($base50Grade, $passingScore) : null,
                     'scores_visible' => $scoresVisible,
                     'show_results' => $scoresVisible ? 1 : 0,
                     'time_used_secs' => $receipt['time_used_secs'] !== null

@@ -40,7 +40,8 @@ $buildReceipt = function (PDO $pdo, array $sub, ?float $passingScore, bool $scor
 
     $earned = (int) $sub['score'];
     $pct    = $totalPoints > 0 ? round(($earned / $totalPoints) * 100, 2) : 0.0;
-    $passed = ($passingScore !== null) ? ($pct >= $passingScore) : null;
+    $base50 = calculateBase50Grade($earned, $totalPoints);
+    $passed = passesBase50Grade($base50, $passingScore);
 
     return [
         'submission_id'     => (int) $sub['submission_id'],
@@ -51,6 +52,8 @@ $buildReceipt = function (PDO $pdo, array $sub, ?float $passingScore, bool $scor
         'total_questions'   => (int) $sub['total_questions'],
         'question_count'    => (int) $sub['total_questions'],
         'percentage'        => $scoresVisible ? $pct : null,
+        'raw_percentage'    => $scoresVisible ? $pct : null,
+        'base50_grade'      => $scoresVisible ? $base50 : null,
         'passing_score'     => $passingScore,
         'passed'            => $scoresVisible ? $passed : null,
         'scores_visible'    => $scoresVisible,

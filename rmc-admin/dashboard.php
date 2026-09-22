@@ -2017,7 +2017,7 @@ foreach ($daily as $d) { $maxDaily = max($maxDaily, (int) ($d['count'] ?? 0)); }
             </div>
             <div class="soft-tip">
               <h4>Scoring</h4>
-              <p>Percentages are derived from raw earned points: <span class="mono">score / SUM(points) × 100</span>. Pass/fail compares that percentage to the exam’s passing threshold. Items are all-or-nothing — no partial credit.</p>
+              <p>Raw percentages are informational: <span class="mono">score / SUM(points) × 100</span>. Pass/fail uses the Base-50 grade <span class="mono">(score / SUM(points) × 50) + 50</span> against the exam’s passing threshold. Items are all-or-nothing — no partial credit.</p>
             </div>
             <div class="soft-tip">
               <h4>Backups &amp; deploy</h4>

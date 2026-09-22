@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../helpers/response.php';
 require_once __DIR__ . '/../../helpers/auth.php';
 require_once __DIR__ . '/../../helpers/archive.php';
+require_once __DIR__ . '/../../helpers/exam_grading.php';
 
 header('Content-Type: application/json');
 
@@ -48,7 +49,8 @@ try {
         "SELECT es.submission_id, u.user_id, u.first_name, u.last_name, u.section,
                 es.score, es.correct_count, es.total_questions, es.time_used_secs,
                 es.auto_submitted, es.exit_attempts, es.submitted_at,
-                ROUND((es.score / NULLIF(qtp.tp, 0)) * 100, 2) AS percentage
+                ROUND((es.score / NULLIF(qtp.tp, 0)) * 100, 2) AS percentage,
+                ROUND(((es.score / NULLIF(qtp.tp, 0)) * 50) + 50, 2) AS base50_grade
          FROM exam_submissions es
          JOIN users u ON u.user_id = es.user_id
          LEFT JOIN (SELECT exam_id, COALESCE(SUM(points), 0) AS tp FROM questions GROUP BY exam_id) qtp
@@ -62,9 +64,9 @@ try {
 
     foreach ($submissions as &$s) {
         $s['percentage'] = $s['percentage'] !== '' && $s['percentage'] !== null ? (float) $s['percentage'] : null;
-        $s['passed'] = $s['percentage'] !== null
-            ? $s['percentage'] >= (int) $exam['passing_score'] && (int) $exam['passing_score'] <= 100
-            : null;
+        $s['base50_grade'] = $s['base50_grade'] !== '' && $s['base50_grade'] !== null ? (float) $s['base50_grade'] : null;
+        $passingScore = $exam['passing_score'] !== null ? (float) $exam['passing_score'] : null;
+        $s['passed'] = passesBase50Grade($s['base50_grade'], $passingScore);
     }
     unset($s);
 

@@ -19,7 +19,7 @@ try {
         "SELECT
             (SELECT COUNT(*) FROM exam_submissions) AS submission_count,
             (SELECT COUNT(DISTINCT user_id) FROM exam_submissions) AS attempts_users,
-            (SELECT SUM(CASE WHEN qtp.tp > 0 AND (es.score / qtp.tp) * 100 >= e.passing_score THEN 1 ELSE 0 END)
+            (SELECT SUM(CASE WHEN qtp.tp > 0 AND ROUND(((es.score / qtp.tp) * 50) + 50, 2) >= e.passing_score THEN 1 ELSE 0 END)
              FROM exam_submissions es
              LEFT JOIN exams e ON e.exam_id = es.exam_id
              LEFT JOIN (SELECT exam_id, COALESCE(SUM(points), 0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id = es.exam_id) AS pass_count,
@@ -41,7 +41,7 @@ try {
              JOIN exams e2 ON e2.exam_id = es.exam_id
              LEFT JOIN (SELECT exam_id, COALESCE(SUM(points), 0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id = es.exam_id
              WHERE e2.class_id = c.class_id) AS avg_pct,
-            (SELECT COALESCE(ROUND((SUM(CASE WHEN qtp.tp > 0 AND (es.score / qtp.tp) * 100 >= e4.passing_score THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)) * 100, 1), 0)
+             (SELECT COALESCE(ROUND((SUM(CASE WHEN qtp.tp > 0 AND ROUND(((es.score / qtp.tp) * 50) + 50, 2) >= e4.passing_score THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)) * 100, 1), 0)
              FROM exam_submissions es
              JOIN exams e4 ON e4.exam_id = es.exam_id
              LEFT JOIN (SELECT exam_id, COALESCE(SUM(points), 0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id = es.exam_id
@@ -59,7 +59,7 @@ try {
              FROM exam_submissions es
              LEFT JOIN (SELECT exam_id, COALESCE(SUM(points), 0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id = es.exam_id
              WHERE es.exam_id = e.exam_id) AS avg_pct,
-            (SELECT COALESCE(ROUND((SUM(CASE WHEN qtp.tp > 0 AND (es.score / qtp.tp) * 100 >= e.passing_score THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)) * 100, 1), 0)
+            (SELECT COALESCE(ROUND((SUM(CASE WHEN qtp.tp > 0 AND ROUND(((es.score / qtp.tp) * 50) + 50, 2) >= e.passing_score THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)) * 100, 1), 0)
              FROM exam_submissions es
              LEFT JOIN (SELECT exam_id, COALESCE(SUM(points), 0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id = es.exam_id
              WHERE es.exam_id = e.exam_id) AS pass_rate

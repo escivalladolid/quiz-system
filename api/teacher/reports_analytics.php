@@ -73,6 +73,24 @@ try {
     $stmt->execute($target_ids);
     $all_submissions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // Start times live on the persisted attempt, while finish times live on
+    // the submission.  Keep this lookup optional so older installations that
+    // have not applied the attempt migration can still load reports.
+    $attempt_start_map = [];
+    try {
+        $attemptStmt = $pdo->prepare(
+            "SELECT exam_id, user_id, started_at
+             FROM exam_attempts
+             WHERE exam_id IN ($placeholders)"
+        );
+        $attemptStmt->execute($target_ids);
+        while ($attempt = $attemptStmt->fetch(PDO::FETCH_ASSOC)) {
+            $attempt_start_map[$attempt['exam_id'] . ':' . $attempt['user_id']] = $attempt['started_at'];
+        }
+    } catch (PDOException $ignored) {
+        // The start time will be null when the legacy database has no attempts table.
+    }
+
     // Proctoring telemetry is optional. Report exports still work when an
     // older database has not installed the monitoring migration.
     $activity_flag_map = [];
@@ -113,7 +131,8 @@ try {
     $passing_map = [];
     foreach ($all_exams as $ex) {
         if (!isset($exam_max_map[$ex['exam_id']])) $exam_max_map[$ex['exam_id']] = 0;
-        $passing_map[$ex['exam_id']] = (int)($ex['passing_score'] ?? 0);
+        $passing_map[$ex['exam_id']] = $ex['passing_score'] !== null
+            ? (float) $ex['passing_score'] : 0.0;
     }
 
 // All individual percentages for distribution & summary
@@ -148,6 +167,8 @@ try {
                 'percentage' => 0,
                 'passed'     => false,
                 'time_used_secs' => null,
+                'started_at' => null,
+                'submitted_at' => null,
                 'flag_count' => 0,
                 'auto_submitted' => false,
             ];
@@ -164,6 +185,8 @@ try {
         $student_flag_count = 0;
         $student_auto_submitted = false;
         $all_passed = true;
+        $first_started_at = null;
+        $last_submitted_at = null;
 
 foreach ($subs as $s) {
             $score   = (int)$s['score'];
@@ -182,15 +205,30 @@ foreach ($subs as $s) {
                 $total_time_used += max(0, (int) $s['time_used_secs']);
                 $has_time_used = true;
             }
+
+            $attemptStartedAt = $attempt_start_map[$s['exam_id'] . ':' . $uid] ?? null;
+            if ($attemptStartedAt !== null && $attemptStartedAt !== '') {
+                if ($first_started_at === null || (string) $attemptStartedAt < (string) $first_started_at) {
+                    $first_started_at = $attemptStartedAt;
+                }
+            }
+            $submissionFinishedAt = $s['submitted_at'] ?? null;
+            if ($submissionFinishedAt !== null && $submissionFinishedAt !== '') {
+                if ($last_submitted_at === null || (string) $submissionFinishedAt > (string) $last_submitted_at) {
+                    $last_submitted_at = $submissionFinishedAt;
+                }
+            }
             $activityFlags = (int) ($activity_flag_map[$s['exam_id'] . ':' . $uid] ?? 0);
             // Avoid double-counting the same exit when both telemetry and the
             // legacy submission counter contain it.
             $student_flag_count += max($activityFlags, (int) ($s['exit_attempts'] ?? 0));
             $student_auto_submitted = $student_auto_submitted || !empty($s['auto_submitted']);
 
-            // Check pass/fail per exam (percentage >= passing_score)
+            // Check pass/fail per exam using the Base-50 grade. The raw
+            // percentage above remains for informational distributions.
             $passing = $passing_map[$s['exam_id']] ?? 0;
-            if ($passing > 0 && $pct < $passing) {
+            $base50 = $tp > 0 ? round((($score / $tp) * 50) + 50, 2) : null;
+            if ($passing > 0 && ($base50 === null || $base50 < $passing)) {
                 $all_passed = false;
             }
         }
@@ -214,6 +252,11 @@ foreach ($subs as $s) {
             'percentage' => $avg_pct,
             'passed'     => $all_passed,
             'time_used_secs' => $has_time_used ? $total_time_used : null,
+            // With one exam selected these are that student's exact attempt
+            // times.  For the all-exams view they represent first start and
+            // last finish across the selected exams.
+            'started_at' => $first_started_at,
+            'submitted_at' => $last_submitted_at,
             'flag_count' => $student_flag_count,
             'auto_submitted' => $student_auto_submitted,
         ];

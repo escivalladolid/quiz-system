@@ -69,13 +69,13 @@ foreach ($students as &$student) {
         }
         unset($student);
 
-// Calculate pass/fail from exam_submissions directly (percentage >= passing_score)
+// Calculate pass/fail from exam_submissions using the Base-50 grade.
         $stmt5 = $pdo->prepare(
             "SELECT COUNT(*) AS pass_count FROM exam_submissions es
              JOIN exams e ON es.exam_id = e.exam_id
              LEFT JOIN (SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id=es.exam_id
              WHERE e.class_id=? AND COALESCE(qtp.tp,0) > 0
-               AND (es.score / qtp.tp) * 100 >= e.passing_score"
+               AND ROUND(((es.score / qtp.tp) * 50) + 50, 2) >= e.passing_score"
         );
         $stmt5->execute([$class_id]);
         $pass_count = (int)$stmt5->fetchColumn();
@@ -85,7 +85,7 @@ foreach ($students as &$student) {
              JOIN exams e ON es.exam_id = e.exam_id
              LEFT JOIN (SELECT exam_id, COALESCE(SUM(points),0) AS tp FROM questions GROUP BY exam_id) qtp ON qtp.exam_id=es.exam_id
              WHERE e.class_id=? AND (COALESCE(qtp.tp,0) = 0
-               OR (es.score / qtp.tp) * 100 < e.passing_score)"
+               OR ROUND(((es.score / qtp.tp) * 50) + 50, 2) < e.passing_score)"
         );
         $stmt6->execute([$class_id]);
         $fail_count = (int)$stmt6->fetchColumn();
@@ -145,6 +145,7 @@ $class_avg = 0;
                         $total_pct_sum += $pct;
                         $total_pct_count++;
                         $s['percentage'] = round($pct, 2);
+                        $s['base50_grade'] = $tp > 0 ? round((($earned / $tp) * 50) + 50, 2) : null;
                         $s['total_points'] = $tp;
                     }
                     unset($s);
@@ -156,7 +157,7 @@ $class_avg = 0;
                 foreach ($exams as $exam) {
                     foreach ($scores as $s) {
                         if ($s['exam_id'] == $exam['exam_id']) {
-                            if ($s['percentage'] >= $exam['passing_score']) {
+                            if ($s['base50_grade'] !== null && $s['base50_grade'] >= (float) $exam['passing_score']) {
                                 $pass_count++;
                             } else {
                                 $fail_count++;

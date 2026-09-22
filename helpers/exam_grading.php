@@ -152,6 +152,25 @@ function buildReviewQuestions(PDO $pdo, int $examId, ?string $answersJson): arra
 }
 
 
+/**
+ * Calculate the institution's Base-50 grade from earned and possible points.
+ * The raw percentage remains a separate informational value.
+ */
+function calculateBase50Grade(int|float $earnedPoints, int|float $totalPoints): ?float {
+    if ($totalPoints <= 0) {
+        return null;
+    }
+    return round((($earnedPoints / $totalPoints) * 50) + 50, 2);
+}
+
+/** Compare a Base-50 grade with the configured exam threshold. */
+function passesBase50Grade(?float $base50Grade, ?float $passingScore): ?bool {
+    if ($base50Grade === null || $passingScore === null) {
+        return null;
+    }
+    return $base50Grade >= $passingScore;
+}
+
 /** Grade a complete question set using the same matching rules as review. */
 function gradeExamQuestions(array $questions, array $answers, ?float $passingScore): array {
     $earned = 0;
@@ -172,10 +191,12 @@ function gradeExamQuestions(array $questions, array $answers, ?float $passingSco
         }
     }
     $percentage = $possible > 0 ? round($earned / $possible * 100, 2) : 0.0;
+    $base50Grade = calculateBase50Grade($earned, $possible);
     return ['score' => $earned, 'earned_points' => $earned, 'total_points' => $possible,
         'correct_count' => $correctCount, 'total_questions' => count($questions),
         'percentage' => $percentage,
-        'passed' => $passingScore !== null ? $percentage >= $passingScore : null];
+        'base50_grade' => $base50Grade,
+        'passed' => passesBase50Grade($base50Grade, $passingScore)];
 }
 
 /**

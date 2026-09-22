@@ -47,9 +47,11 @@ try {
 $subStmt = $pdo->prepare(
             'SELECT s.submission_id, s.user_id, s.score, s.correct_count, s.total_questions,
                     s.time_used_secs, s.submitted_at, s.answers_json, s.results_released, s.released_at,
+                    a.started_at,
                     u.first_name, u.last_name
              FROM exam_submissions s
              JOIN users u ON u.user_id = s.user_id
+             LEFT JOIN exam_attempts a ON a.exam_id = s.exam_id AND a.user_id = s.user_id
              WHERE s.exam_id = :eid AND s.user_id = :uid'
         );
         $subStmt->execute(['eid' => $examId, 'uid' => $studentId]);
@@ -97,6 +99,7 @@ $subScore   = (int) $submission['score'];
                 'total_points'    => $maxPts,
                 'percentage'      => $subPct,
                 'time_used_secs'  => $submission['time_used_secs'] !== null ? (int) $submission['time_used_secs'] : null,
+                'started_at'      => $submission['started_at'],
                 'submitted_at'    => $submission['submitted_at'],
                 'results_released' => (int) $submission['results_released'] === 1,
                 'released_at'     => $submission['released_at'],
@@ -119,11 +122,13 @@ $subScore   = (int) $submission['score'];
     $listStmt = $pdo->prepare(
         'SELECT s.submission_id, s.user_id, s.score, s.correct_count, s.total_questions,
                 s.time_used_secs, s.submitted_at, s.results_released, s.released_at,
+                a.started_at,
                 u.first_name, u.last_name,
                 ' . $tabSwitchCountExpr . ' AS tab_switch_count
          FROM exam_submissions s
          JOIN users u ON u.user_id = s.user_id
-WHERE s.exam_id = :eid
+         LEFT JOIN exam_attempts a ON a.exam_id = s.exam_id AND a.user_id = s.user_id
+ WHERE s.exam_id = :eid
          ORDER BY s.score DESC,
                    s.submitted_at ASC'
     );
@@ -145,6 +150,7 @@ $payload = [];
             'total_points'    => $total,
             'percentage'      => $pct,
             'time_used_secs'  => $s['time_used_secs'] !== null ? (int) $s['time_used_secs'] : null,
+            'started_at'      => $s['started_at'],
             'submitted_at'    => $s['submitted_at'],
             'results_released' => (int) $s['results_released'] === 1,
             'released_at'     => $s['released_at'],
